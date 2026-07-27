@@ -230,7 +230,11 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
           </Card>
           <Card>
             <CardHeader title="Canvas grade sync" />
-            <CanvasSync runId={run.id} ready={canvasSyncReady} />
+            <CanvasSync
+                runId={run.id}
+                ready={canvasSyncReady}
+                missingCount={rows.filter((r) => r.status === 'not_taken').length}
+              />
           </Card>
 
           {graded.length > 0 && canvasIssues.length > 0 ? (

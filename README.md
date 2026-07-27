@@ -189,10 +189,17 @@ the scores export. Canvas's own import expects a number or `EX`, so it may rejec
 ignore a non-numeric grade — import a two-row file first to see how your Canvas
 handles it.
 
-**Only students with submissions** on the run page drops those students from the file
-instead. Canvas leaves a student's grade untouched when they are absent from the
-import, so use this when you have already excused or scored them by hand and do not
-want the import to overwrite that.
+**Only students with submissions** drops those students instead. Canvas leaves a
+student's grade untouched when they are absent from an import, so use this when you
+have already excused or scored them by hand and do not want to overwrite that.
+
+The same checkbox is on the **Canvas grade sync** dialog, which posts to Canvas over
+the API rather than producing a file. It defaults to on there, because the sync
+writes to student records directly. Turned off, it posts `MI` for students with no
+scanned sheet — Canvas accepts a number, a percentage, a letter grade, or `EX`, so
+it will most likely reject `MI`. Those students are reported individually instead of
+aborting the run, and the sync stops early if five in a row fail, which means the
+token or assignment is wrong rather than one student being awkward.
 
 ## Choosing the student identifier
 

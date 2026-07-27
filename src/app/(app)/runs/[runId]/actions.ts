@@ -13,6 +13,7 @@ import type { LayoutEntry } from '@/lib/seed'
 import { audit } from '@/lib/audit'
 import { requireRunPermission } from '@/lib/authorization'
 import { postCanvasGrade } from '@/lib/canvas'
+import { MISSING_MARK } from '@/lib/export'
 
 export interface GradingPreviewState {
   ok?: boolean
@@ -231,7 +232,15 @@ export async function retryRun(formData: FormData) {
   revalidatePath(`/runs/${runId}`)
 }
 
-export interface CanvasSyncState { ok?: boolean; error?: string; synced?: number }
+export interface CanvasSyncState {
+  ok?: boolean
+  error?: string
+  synced?: number
+  /** Students Canvas refused, most likely the ones sent MISSING_MARK. */
+  failed?: { name: string; grade: string; reason: string }[]
+  /** Graded students with no Canvas user mapped; unreachable either way. */
+  unmapped?: number
+}
 
 /** Posts the active, final grading import to one Canvas assignment. The typed
  * confirmation ensures a browser click cannot silently change student records. */
@@ -239,6 +248,7 @@ export async function syncCanvasGrades(_prev: CanvasSyncState, formData: FormDat
   const runId = String(formData.get('runId'))
   const assignmentId = String(formData.get('assignmentId') ?? '').trim()
   const confirmation = String(formData.get('confirmation') ?? '').trim()
+  const submittedOnly = formData.get('submittedOnly') === 'on'
   const { user, run } = await requireRunPermission(runId, 'export:grades')
   if (!/^\d+$/.test(assignmentId)) return { error: 'Enter the numeric Canvas assignment ID.' }
   if (confirmation !== 'PUSH') return { error: 'Type PUSH to confirm posting grades to Canvas.' }
@@ -248,21 +258,55 @@ export async function syncCanvasGrades(_prev: CanvasSyncState, formData: FormDat
   const activeImport = await prisma.gradingImport.findFirst({ where: { runId, isActive: true }, orderBy: { createdAt: 'desc' } })
   if (!activeImport) return { error: 'Grade the run before syncing to Canvas.' }
   const results = await prisma.studentResult.findMany({ where: { importId: activeImport.id }, include: { studentExam: { include: { student: true } } } })
-  const eligible = results.filter((result) => result.status === 'graded' && result.studentExam.student.canvasUserId)
-  if (!eligible.length) return { error: 'There are no graded Canvas-mapped results to sync.' }
+  const mapped = results.filter((result) => result.studentExam.student.canvasUserId)
+  const unmapped = results.filter(
+    (result) => result.status === 'graded' && !result.studentExam.student.canvasUserId,
+  ).length
 
-  try {
-    for (const result of eligible) {
+  // Unchecked, the sync covers the whole roster and records MISSING_MARK for anyone
+  // without a scanned sheet. Checked, it touches only students who sat the exam,
+  // leaving everyone else's Canvas grade exactly as it is.
+  const eligible = mapped
+    .filter((result) => !submittedOnly || result.status === 'graded')
+    .map((result) => ({
+      result,
+      grade: result.status === 'graded' ? result.earned : (MISSING_MARK as number | string),
+    }))
+  if (!eligible.length) return { error: 'There are no Canvas-mapped results to sync.' }
+
+  const failed: NonNullable<CanvasSyncState['failed']> = []
+  let synced = 0
+  let consecutiveFailures = 0
+
+  for (const { result, grade } of eligible) {
+    const student = result.studentExam.student
+    const name = `${student.lastName}, ${student.firstName}`
+    try {
       await postCanvasGrade({
         courseId: exam.course.canvasCourseId,
         assignmentId,
-        studentCanvasUserId: result.studentExam.student.canvasUserId!,
-        grade: result.earned,
+        studentCanvasUserId: student.canvasUserId!,
+        grade,
       })
+      synced++
+      consecutiveFailures = 0
+    } catch (error) {
+      failed.push({ name, grade: String(grade), reason: error instanceof Error ? error.message : 'Canvas rejected the grade.' })
+      consecutiveFailures++
+      // A run of failures means something systemic — a bad token, the wrong
+      // assignment — not one awkward student. Stop rather than issue hundreds of
+      // doomed requests.
+      if (consecutiveFailures >= 5) {
+        return {
+          error: `Stopped after ${consecutiveFailures} consecutive failures. ${synced} grade(s) were posted before that; review Canvas before retrying.`,
+          synced,
+          failed: failed.slice(0, 20),
+          unmapped,
+        }
+      }
     }
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : 'Canvas grade sync failed. Some grades may have been posted; review Canvas before retrying.' }
   }
-  await audit({ actorUserId: user.id, action: 'canvas.grades_synced', entityType: 'generation_run', entityId: runId, courseId: exam.courseId, metadata: { assignmentId, count: eligible.length } })
-  return { ok: true, synced: eligible.length }
+
+  await audit({ actorUserId: user.id, action: 'canvas.grades_synced', entityType: 'generation_run', entityId: runId, courseId: exam.courseId, metadata: { assignmentId, count: synced, failed: failed.length, submittedOnly } })
+  return { ok: true, synced, failed: failed.slice(0, 20), unmapped }
 }

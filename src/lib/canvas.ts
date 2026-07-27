@@ -61,7 +61,10 @@ export async function fetchCanvasUserProfile(canvasUserId: string): Promise<Canv
   return profile as CanvasUserProfile
 }
 
-export async function postCanvasGrade(params: { courseId: string; assignmentId: string; studentCanvasUserId: string; grade: number }) {
+/** `grade` is Canvas's `posted_grade`, which accepts a number, a percentage, a
+ * letter grade, or `EX` to excuse. Anything else — `MI` included — is rejected by
+ * Canvas, so callers must be prepared for a per-student failure. */
+export async function postCanvasGrade(params: { courseId: string; assignmentId: string; studentCanvasUserId: string; grade: number | string }) {
   const body = new URLSearchParams({ 'submission[posted_grade]': String(params.grade) })
   await canvasFetch(
     `/api/v1/courses/${encodeURIComponent(params.courseId)}/assignments/${encodeURIComponent(params.assignmentId)}/submissions/${encodeURIComponent(params.studentCanvasUserId)}`,
