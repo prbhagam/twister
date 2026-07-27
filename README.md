@@ -89,9 +89,9 @@ live in that run.
 | Blank | 0, flagged |
 | Multiple bubbles (`A;B`) | 0, flagged |
 | A letter past the end of a short variation | 0, flagged as out-of-range |
-| Gradescope reports `Missing` | recorded as not taken; exported as **M**, never 0 |
+| Gradescope reports `Missing` | recorded as not taken; exported as **MI**, never 0 |
 
-A student with no scanned sheet exports as `M` in the Score, Percent, and every
+A student with no scanned sheet exports as `MI` in the Score, Percent, and every
 question column — a zero would assert they sat the exam and got everything wrong,
 which is a different claim.
 
@@ -105,7 +105,7 @@ Grades → Import. It matches students on SIS User ID and needs no API access, s
 works whatever your Canvas role permits.
 
 Students with no scanned sheet are left out of *that file only* — they are recorded
-as `M` in the scores export, and Canvas cannot accept `M` in a grade cell. Mark them
+as `MI` in the scores export, and Canvas cannot accept `MI` in a grade cell. Mark them
 excused or zero in Canvas yourself.
 
 ## Choosing the student identifier
@@ -187,7 +187,7 @@ up with the same slice of the printed pile.
 
 It deliberately seeds the cases that are tedious to produce by hand: roughly one
 student in seventeen hands in no sheet at all (they appear as `Missing`, and export
-as `M`), plus blanks, double-bubbles, and the occasional letter that was never
+as `MI`), plus blanks, double-bubbles, and the occasional letter that was never
 printed on that student's paper.
 
 The bubble coordinates are read off the Gradescope template — 18pt between letters,

@@ -5,7 +5,7 @@ import { byLastName } from './roster'
 import type { LayoutEntry } from './seed'
 
 /** Recorded in place of a score when a student has no scanned sheet. */
-export const MISSING_MARK = 'M'
+export const MISSING_MARK = 'MI'
 
 export interface ExportStudent {
   firstName: string

@@ -130,6 +130,8 @@ describe('canvasCsv', () => {
     )
     const rows = parse(csv)
     expect(rows.map((r) => r['Student'])).toEqual(['Present, Test'])
-    expect(csv).not.toContain(MISSING_MARK)
+    // Checked against the grade cells rather than the whole file: a substring search
+    // would also match any student whose name happens to contain those letters.
+    expect(rows.map((r) => r['Exam 1'])).not.toContain(MISSING_MARK)
   })
 })
