@@ -63,12 +63,33 @@ loads a demo exam plus a roster, first drop your own export at
    what has already been printed or how it grades.
 4. **Print.** Each student's PDF is page 1 a Gradescope bubble sheet with their name
    and identifier pre-filled, page 2 a cover page, then their questions. A single merged
-   print file contains the whole class in last-name order.
+   print file contains the whole class in last-name order. See *Printing* below.
 5. **Grade.** Upload the Gradescope export. TWISTER shows a match report before
    writing anything, then scores each student against their own key.
 6. **Review and export.** Each student's page shows their actual PDF beside a
    question-by-question comparison of the key against what they marked. Export scores
    alphabetically by last name, or as a Canvas gradebook import CSV.
+
+## Printing
+
+Every booklet is padded to an **even** page count, with a trailing page that says so.
+This is not cosmetic: booklets vary in length, and printing the merged file
+double-sided without it puts the *next* student's bubble sheet on the back of the
+previous student's last page. In one 404-student run, 259 booklets were odd-length.
+
+Stapling each booklet separately is a property of your copier, not of the PDF. A
+copier's "staple each copy" applies to each copy of a repeated document, so a single
+merged file is stapled once. Options, roughly in order of preference:
+
+- **Subset finishing.** Some copiers (Xerox, Ricoh) can staple every *N* pages. This
+  needs every booklet to be the same length, not merely even — ask and I will switch
+  padding from even to uniform.
+- **One job per booklet.** Reliable, but only practical if your print queue accepts
+  finishing options from the command line. Check with
+  `lpoptions -p <printer> -l | grep -i staple`; a queue using a generic PostScript
+  driver exposes no finishing at all, and a release-station workflow applies its
+  settings to the whole released job.
+- **Staple by hand.** The bubble sheet makes each boundary obvious at a glance.
 
 ## Deleting things
 

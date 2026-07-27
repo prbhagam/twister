@@ -2,9 +2,15 @@ import { cp, mkdir, writeFile } from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { PDFDocument, StandardFonts } from 'pdf-lib'
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { chromium, type Browser, type Page } from 'playwright'
-import { BUBBLE_SHEET_PATH, BubbleSheetStamper, SHEET_SIZE, drawStudentFields } from './bubble-sheet'
+import {
+  BUBBLE_SHEET_PATH,
+  BubbleSheetStamper,
+  SHEET_SIZE,
+  drawStudentFields,
+  toWinAnsi,
+} from './bubble-sheet'
 import { buildExamBody, buildShellHtml, footerTemplate, headerTemplate, type RenderExam } from './exam-html'
 
 const KATEX_DIST = path.join(process.cwd(), 'node_modules', 'katex', 'dist')
@@ -28,6 +34,55 @@ export async function stageRenderAssets(dir: string): Promise<string> {
 export interface RenderedExam {
   pdf: Uint8Array
   pageCount: number
+}
+
+/**
+ * Appends a filler page when a booklet would otherwise end on an odd page.
+ *
+ * Without this, printing the merged file double-sided puts the *next* student's
+ * bubble sheet on the back of this student's last page. Every booklet ending on an
+ * even page guarantees each one starts on a fresh sheet.
+ *
+ * The page says so explicitly rather than being blank, so nobody thinks their
+ * booklet was misprinted, and it carries the same footer so a loose sheet can still
+ * be traced back to its owner.
+ */
+export async function padBooklet(doc: PDFDocument, exam: RenderExam): Promise<void> {
+  if (doc.getPageCount() % 2 === 0) return
+
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const page = doc.addPage(SHEET_SIZE)
+  const [width, height] = SHEET_SIZE
+
+  const notice = 'This page is intentionally blank.'
+  const noticeSize = 11
+  page.drawText(notice, {
+    x: (width - font.widthOfTextAtSize(notice, noticeSize)) / 2,
+    y: height / 2,
+    size: noticeSize,
+    font,
+    color: rgb(0.42, 0.45, 0.5),
+  })
+
+  // Same three-part footer the rendered pages carry.
+  const footerSize = 7.5
+  const footer = rgb(0.54, 0.57, 0.61)
+  const margin = 54
+  page.drawText(`${toWinAnsi(exam.studentName)} · ${toWinAnsi(exam.gtId)}`, {
+    x: margin,
+    y: 40,
+    size: footerSize,
+    font,
+    color: footer,
+  })
+  const trace = toWinAnsi(exam.traceCode)
+  page.drawText(trace, {
+    x: width - margin - font.widthOfTextAtSize(trace, footerSize),
+    y: 40,
+    size: footerSize,
+    font,
+    color: footer,
+  })
 }
 
 /**
@@ -96,6 +151,7 @@ export class ExamRenderer {
 
     const doc = await PDFDocument.load(bodyPdf)
     await this.stamper.prependTo(doc, { name: exam.studentName, gtId: exam.gtId })
+    await padBooklet(doc, exam)
 
     return { pdf: await doc.save(), pageCount: doc.getPageCount() }
   }
