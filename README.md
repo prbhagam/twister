@@ -92,22 +92,46 @@ Two pages exist purely so the paper behaves:
   the previous student's last page. In one 404-student run, 259 booklets were
   odd-length.
 
-Together these cost one or two sheets per student. Printing single-sided wastes
-them; if you ever need that, say so and the padding can be made conditional.
+These cost less than they look. Duplex sheets are `ceil(pages / 2)`, so padding an
+odd page count to even is free — across a real 404-student run the two additions
+came to 145 extra sheets in total, not one per student. Printing single-sided does
+pay for both; if you need that, say so and the padding can be made conditional.
 
 Stapling each booklet separately is a property of your copier, not of the PDF. A
 copier's "staple each copy" applies to each copy of a repeated document, so a single
 merged file is stapled once. Options, roughly in order of preference:
 
+### With a release system (Canon uniFLOW, PaperCut)
+
+Finishing is chosen at the device and applies to **each released job**. So submit one
+job per student and release them together:
+
+```bash
+# dry run — prints the commands, sends nothing
+npx tsx scripts/submit-print-jobs.ts --printer <queue> --limit 3
+npx tsx scripts/submit-print-jobs.ts --printer <queue> --limit 3 --send
+```
+
+Release those three at the copier with duplex and stapling on. **Three stapled
+booklets** means the whole run will work — drop `--limit` and send the rest.
+**One stapled brick** means your release system merges jobs, and hand-stapling is
+the answer.
+
+Each job is titled `Lastname, Firstname — Exam title`, so the release list is
+readable, and jobs are submitted in last-name order. There is a delay between
+submissions because a queue handed 404 jobs at once tends to drop some; raise it
+with `--delay`. If anything looks wrong: `cancel -a <queue>`.
+
+### Other routes
+
 - **Subset finishing**, if your copier can staple every *N* pages. This needs every
   booklet to be the same length, not merely even — ask and padding switches from
   even to uniform.
-- **One job per booklet.** Reliable, but only if the queue accepts finishing options
-  from the command line. Check with `lpoptions -p <printer> -l | grep -i staple`. A
-  queue using a generic PostScript driver exposes no finishing at all, and a
-  release-station workflow (Canon uniFLOW, PaperCut) applies its settings to the
-  whole released job — so this needs a driver that talks to the finisher directly.
 - **Staple by hand.** The bubble sheet makes each boundary obvious at a glance.
+
+Note that a queue using a generic PostScript driver exposes no finishing at all
+(`lpoptions -p <printer> -l | grep -i staple` returns nothing), which is fine under
+a release system since the choice happens at the device.
 
 ## Deleting things
 
@@ -205,6 +229,7 @@ verify` unless you mean to touch your real data:
 | `npx tsx scripts/full-run.ts` | Generates the entire seeded class, for timing |
 | `npx tsx scripts/seed-grading.ts` | Writes a synthetic grading import against the newest run |
 | `npx tsx scripts/make-sample-scans.ts [runId] [batchSize]` | Fills in bubble sheets for a real run, as if the class had sat the exam. See below. |
+| `npx tsx scripts/submit-print-jobs.ts --printer <queue>` | Submits one print job per student so a release system staples each booklet. Dry run unless `--send`. See *Printing*. |
 
 ## Testing the grading loop without a real exam
 
