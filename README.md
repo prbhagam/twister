@@ -49,7 +49,7 @@ loads a demo exam plus a roster, first drop your own export at
 
 ## Workflow
 
-1. **Create a course**, then import the GT roster CSV (or sync from Canvas). Only `Role = Student` rows are
+1. **Create a course**, then import the GT roster CSV. Only `Role = Student` rows are
    imported; sections are normalized (the duplicated `/i` variants collapse) and
    re-importing updates students rather than duplicating them.
 2. **Create an exam** and add questions. Each question holds 2–3 variations; each
@@ -93,19 +93,21 @@ live in that run.
 
 A student with no scanned sheet exports as `M` in the Score, Percent, and every
 question column — a zero would assert they sat the exam and got everything wrong,
-which is a different claim. The Canvas CSV omits them entirely rather than sending
-a grade Canvas cannot parse.
+which is a different claim.
 
 Every flagged question can be manually overridden. Overrides are stored against the
 student's exam, not the import, so re-importing a corrected CSV does not wipe them.
 
-## Canvas
+## Getting scores into Canvas
 
-Scores go to Canvas through the **Canvas gradebook (CSV)** download on the run page:
-Canvas → Grades → Import. It matches on SIS User ID and needs no API access, so it
-works regardless of what your Canvas role permits.
+Download **Canvas gradebook (CSV)** from the run page and upload it via Canvas →
+Grades → Import. It matches students on SIS User ID and needs no API access, so it
+works whatever your Canvas role permits.
 
-### Choosing the seeding identity
+Students with no scanned sheet are omitted from that file rather than sent a grade
+Canvas cannot parse — mark them excused or zero yourself.
+
+## Choosing the student identifier
 
 One value does three jobs, and they have to agree:
 
@@ -126,32 +128,6 @@ against an export keyed the other. Only the *stamped* value has to be right.
 Generation refuses to start if any student lacks the identity their exam seeds from,
 and names them. Seeding on a blank value would give every affected student the same
 paper.
-
-### Adding the Canvas API later
-
-A working Canvas API integration — live roster sync and direct score push — was
-built and then removed. It is parked at the **`canvas-api` git tag**, not deleted:
-
-```bash
-git show canvas-api --stat            # what it contained
-git checkout canvas-api -- src/lib/canvas   # restore a piece of it
-```
-
-`Course.canvasCourseId` and `Exam.canvasAssignmentId` are still in the schema and
-unused, so reviving it is a code change rather than a migration.
-
-Two things that cost time the first time round, worth knowing before you start:
-
-- Reading or writing grades needs the Canvas **Grades - edit** permission, granted
-  per course role. TA roles commonly have it withheld, so a token that works in a
-  course you teach can be refused in one you TA.
-- A token without SIS read access returns no GT IDs at all. Rosters pulled that way
-  carry only usernames, so those exams must be seeded on *GT username*.
-
-A Canvas personal access token cannot be scoped: it carries the full permissions of
-whoever minted it across every course they can reach, including writing grades. If a
-Canvas admin will issue a Developer Key (OAuth2) instead, that is scoped and
-revocable and materially safer.
 
 ## How the randomization works
 
@@ -177,10 +153,15 @@ seed — enough to identify a stray page and recover its layout.
 | `npm run verify` | Full end-to-end verification against a throwaway `verify.db`. Never touches your real database. |
 | `npm test` | Unit tests against the synthetic fixtures in `src/lib/__fixtures__/`. If real files are present in `assets/`, extra checks run against them too; otherwise those are skipped. |
 | `npm run db:seed` | Loads a 12-question demo exam and the sample roster |
-| `npx tsx scripts/e2e-check.ts HP` | ⚠ writes to `DATABASE_URL` — prefer `npm run verify`. |
-| _(the check scripts below all write to `DATABASE_URL`)_ | Generates one section, verifies the PDFs, then grades a synthesized export with known errors injected and checks the scores |
 | `npx tsx scripts/preview-exam.ts` | Renders two sample exams without touching the database |
 | `npx tsx scripts/preview-bubble-sheet.ts` | Renders stamped bubble sheets for checking field placement |
+
+These write to whichever database `DATABASE_URL` points at, so prefer `npm run
+verify` unless you mean to touch your real data:
+
+| Command | What it does |
+|---|---|
+| `npx tsx scripts/e2e-check.ts HP` | Generates one section, verifies the PDFs, then grades a synthesized export with known errors injected and checks the scores |
 | `npx tsx scripts/full-run.ts` | Generates the entire seeded class, for timing |
 | `npx tsx scripts/seed-grading.ts` | Writes a synthetic grading import against the newest run |
 | `npx tsx scripts/make-sample-scans.ts [runId]` | Fills in bubble sheets for a real run, as if the class had sat the exam. See below. |
@@ -227,6 +208,9 @@ them anywhere.
   print file; each student's individual PDF carries its own copy.
 - Authoring input is trusted — the only author is the authenticated instructor — so
   markdown is rendered without sanitization.
+- A Canvas API integration (live roster sync, direct score push) was built and then
+  removed. It is parked at the `canvas-api` git tag if it is ever wanted;
+  `Course.canvasCourseId` and `Exam.canvasAssignmentId` remain in the schema, unused.
 - `npm audit` reports advisories in transitive build dependencies (`sharp` and
   `postcss` under Next, `valibot` under Prisma). None has a non-breaking fix;
   `--force` would downgrade Next to v9.
