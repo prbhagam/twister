@@ -183,6 +183,34 @@ seed — enough to identify a stray page and recover its layout.
 | `npx tsx scripts/preview-bubble-sheet.ts` | Renders stamped bubble sheets for checking field placement |
 | `npx tsx scripts/full-run.ts` | Generates the entire seeded class, for timing |
 | `npx tsx scripts/seed-grading.ts` | Writes a synthetic grading import against the newest run |
+| `npx tsx scripts/make-sample-scans.ts [runId]` | Fills in bubble sheets for a real run, as if the class had sat the exam. See below. |
+
+## Testing the grading loop without a real exam
+
+`npx tsx scripts/make-sample-scans.ts [runId]` takes a generation run and produces
+the two things you would otherwise need a room full of students to get. It defaults
+to the newest completed run.
+
+Into `<output>/<runId>-scans/`:
+
+| File | Use |
+|---|---|
+| `filled-sheets-all.pdf` | Bubble sheets with answers filled in. Upload to Gradescope to exercise the real path: OCR → export → import here. |
+| `expected-gradescope-export.csv` | The export those sheets should produce, so you can test grading directly without scanning anything. |
+
+It deliberately seeds the cases that are tedious to produce by hand: roughly one
+student in seventeen hands in no sheet at all (they appear as `Missing`, and export
+as `M`), plus blanks, double-bubbles, and the occasional letter that was never
+printed on that student's paper.
+
+The bubble coordinates are read off the Gradescope template — 18pt between letters,
+17pt between rows, with a wider break every fifth row. If Gradescope ever reissues
+the sheet, check `bubbleCentre()` in that script against the new one and re-render a
+page before trusting it.
+
+**These sheets carry real student names and IDs.** They are FERPA-protected
+education records. The output directory is gitignored; do not commit them or send
+them anywhere.
 
 ## Notes and limits
 
