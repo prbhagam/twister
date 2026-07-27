@@ -137,8 +137,8 @@ questionSeed = HMAC-SHA256(studentSeed, `q:${questionId}`)
 orderSeed    = HMAC-SHA256(studentSeed, "order")
 ```
 
-where `identity` is the exam's chosen identifier — see *Choosing the seeding
-identity*. Each feeds an sfc32 PRNG. Per-question sub-streams mean editing question 7 does not
+where `identity` is the exam's chosen identifier — see *Choosing the student
+identifier*. Each feeds an sfc32 PRNG. Per-question sub-streams mean editing question 7 does not
 reshuffle questions 1–6, which keeps regenerated runs diffable. The exam page shows
 the total number of distinct papers the current question bank can produce.
 
@@ -164,20 +164,25 @@ verify` unless you mean to touch your real data:
 | `npx tsx scripts/e2e-check.ts HP` | Generates one section, verifies the PDFs, then grades a synthesized export with known errors injected and checks the scores |
 | `npx tsx scripts/full-run.ts` | Generates the entire seeded class, for timing |
 | `npx tsx scripts/seed-grading.ts` | Writes a synthetic grading import against the newest run |
-| `npx tsx scripts/make-sample-scans.ts [runId]` | Fills in bubble sheets for a real run, as if the class had sat the exam. See below. |
+| `npx tsx scripts/make-sample-scans.ts [runId] [batchSize]` | Fills in bubble sheets for a real run, as if the class had sat the exam. See below. |
 
 ## Testing the grading loop without a real exam
 
-`npx tsx scripts/make-sample-scans.ts [runId]` takes a generation run and produces
-the two things you would otherwise need a room full of students to get. It defaults
-to the newest completed run.
+`npx tsx scripts/make-sample-scans.ts [runId] [batchSize]` takes a generation run and
+produces what you would otherwise need a room full of students to get. It defaults to
+the newest completed run.
 
 Into `<output>/<runId>-scans/`:
 
 | File | Use |
 |---|---|
-| `filled-sheets-all.pdf` | Bubble sheets with answers filled in. Upload to Gradescope to exercise the real path: OCR → export → import here. |
+| `filled-sheets-batch-NN.pdf` | Bubble sheets with answers filled in, 25 per file. Upload to Gradescope to exercise the real path: OCR → export → import here. |
+| `batch-manifest.csv` | Which students are in which batch, so a failed upload traces to people rather than a page range. |
 | `expected-gradescope-export.csv` | The export those sheets should produce, so you can test grading directly without scanning anything. |
+
+Batch size defaults to 25 and is the second argument: `... [runId] 50`. Batches are
+cut in the same last-name order as the print stack, so batch *n* of the scans lines
+up with the same slice of the printed pile.
 
 It deliberately seeds the cases that are tedious to produce by hand: roughly one
 student in seventeen hands in no sheet at all (they appear as `Missing`, and export

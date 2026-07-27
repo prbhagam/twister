@@ -1,6 +1,6 @@
 /**
  * Produces filled-in bubble sheets for a generation run, as if the class had sat
- * the exam and the sheets had been scanned. Upload the merged PDF to Gradescope to
+ * the exam and the sheets had been scanned. Upload the batches to Gradescope to
  * exercise the whole loop: OCR -> export -> TWISTER grading.
  *
  * Deliberately seeds the cases that are awkward to produce by hand:
@@ -11,7 +11,10 @@
  * sheets carry real student names and IDs, so they are FERPA-protected — do not
  * commit them or send them anywhere.
  *
- * Run: npx tsx scripts/make-sample-scans.ts [runId]
+ * Sheets are written in batches (25 per PDF by default) because Gradescope uploads
+ * are easier to retry and reconcile in chunks than as one very long file.
+ *
+ * Run: npx tsx scripts/make-sample-scans.ts [runId] [batchSize]
  */
 import 'dotenv/config'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -80,7 +83,13 @@ function rng(seed: string) {
   return sfc32(createHmac('sha256', 'sample-scans').update(seed).digest())
 }
 
+const DEFAULT_BATCH_SIZE = 25
+
 async function main() {
+  const batchArg = Number(process.argv[3] ?? DEFAULT_BATCH_SIZE)
+  const batchSize =
+    Number.isInteger(batchArg) && batchArg > 0 ? batchArg : DEFAULT_BATCH_SIZE
+
   const runId =
     process.argv[2] ??
     (
@@ -157,31 +166,61 @@ async function main() {
 
   const { readFile } = await import('node:fs/promises')
   const templateBytes = new Uint8Array(await readFile(BUBBLE_SHEET_PATH))
-
-  const merged = await PDFDocument.create()
-  const [sheetTemplate] = await merged.embedPdf(templateBytes, [0])
-  const font = await merged.embedFont(StandardFonts.Helvetica)
   const ink = rgb(0.05, 0.05, 0.08)
 
-  for (const sheet of sheets) {
-    const page = merged.addPage(SHEET_SIZE)
-    page.drawPage(sheetTemplate, { x: 0, y: 0, width: SHEET_SIZE[0], height: SHEET_SIZE[1] })
-    drawStudentFields(page, font, { name: sheet.name, gtId: sheet.identity })
+  // Split into batches: Gradescope uploads are easier to retry and easier to
+  // reconcile in chunks than as one 380-page file.
+  const batches: Sheet[][] = []
+  for (let i = 0; i < sheets.length; i += batchSize) {
+    batches.push(sheets.slice(i, i + batchSize))
+  }
+  const width = String(batches.length).length
 
-    for (const [position, letters] of sheet.marks) {
-      for (const letter of letters) {
-        const index = LETTERS.indexOf(letter as (typeof LETTERS)[number])
-        if (index === -1) continue
-        const { x, y } = bubbleCentre(position, index)
-        // Slightly under the printed ring so the outline stays visible, which is
-        // what a pencil fill actually looks like to the scanner.
-        page.drawEllipse({ x, y, xScale: 4.6, yScale: 4.6, color: ink })
+  const manifest: { batch: string; sheet: number; name: string; identity: string }[] = []
+
+  for (const [index, batch] of batches.entries()) {
+    const doc = await PDFDocument.create()
+    const [sheetTemplate] = await doc.embedPdf(templateBytes, [0])
+    const font = await doc.embedFont(StandardFonts.Helvetica)
+
+    for (const [position, sheet] of batch.entries()) {
+      const page = doc.addPage(SHEET_SIZE)
+      page.drawPage(sheetTemplate, { x: 0, y: 0, width: SHEET_SIZE[0], height: SHEET_SIZE[1] })
+      drawStudentFields(page, font, { name: sheet.name, gtId: sheet.identity })
+
+      for (const [questionNumber, letters] of sheet.marks) {
+        for (const letter of letters) {
+          const letterIndex = LETTERS.indexOf(letter as (typeof LETTERS)[number])
+          if (letterIndex === -1) continue
+          const { x, y } = bubbleCentre(questionNumber, letterIndex)
+          // Slightly under the printed ring so the outline stays visible, which is
+          // what a pencil fill actually looks like to the scanner.
+          page.drawEllipse({ x, y, xScale: 4.6, yScale: 4.6, color: ink })
+        }
       }
+
+      manifest.push({
+        batch: String(index + 1).padStart(width, '0'),
+        sheet: position + 1,
+        name: sheet.name,
+        identity: sheet.identity,
+      })
     }
+
+    const label = String(index + 1).padStart(width, '0')
+    await writeFile(path.join(dir, `filled-sheets-batch-${label}.pdf`), await doc.save())
   }
 
-  const mergedPath = path.join(dir, 'filled-sheets-all.pdf')
-  await writeFile(mergedPath, await merged.save())
+  // Which students landed in which batch, so a failed upload can be traced to
+  // people rather than to a page range.
+  await writeFile(
+    path.join(dir, 'batch-manifest.csv'),
+    Papa.unparse({
+      fields: ['Batch', 'Sheet in batch', 'Name', 'Identifier'],
+      data: manifest.map((m) => [m.batch, m.sheet, m.name, m.identity]),
+    }),
+    'utf8',
+  )
 
   // --- the Gradescope export those sheets should produce --------------------
 
@@ -249,8 +288,17 @@ async function main() {
   console.log(`  no sheet      : ${absent.length}  (will import as Missing)`)
   console.log(`  flagged marks : ${flagTally.blank} blank, ${flagTally.multi} double-bubbled, ${flagTally.out_of_range} out-of-range`)
   console.log(`  wrong answers : ${flagTally.wrong}`)
-  console.log(`\n  ${mergedPath}`)
-  console.log(`  ${csvPath}`)
+
+  console.log(`\n  ${batches.length} batch(es) of up to ${batchSize} sheets, in ${dir}`)
+  for (const [index, batch] of batches.entries()) {
+    const label = String(index + 1).padStart(width, '0')
+    console.log(
+      `    filled-sheets-batch-${label}.pdf  ${String(batch.length).padStart(3)} sheets  ` +
+        `${batch[0].name} … ${batch[batch.length - 1].name}`,
+    )
+  }
+  console.log(`\n  batch-manifest.csv            which students are in which batch`)
+  console.log(`  ${path.basename(csvPath)}  the export these sheets should produce`)
   console.log('\nThese carry real student names and IDs. Do not commit them.\n')
 }
 
