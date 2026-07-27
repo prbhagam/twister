@@ -12,6 +12,7 @@ import { deleteRun } from '../../actions'
 import { retryRun } from './actions'
 import { GradingPanel } from './GradingPanel'
 import { RunProgress } from './RunProgress'
+import { CanvasSync } from './CanvasSync'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,6 +64,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
 
   const sections = (JSON.parse(run.sections) as string[]).map(sectionLabel)
   const canvasIssues = canvasPreflight(rows)
+  const canvasSyncReady = Boolean(filename) && rows.some((row) => row.status === 'graded')
 
   return (
     <div className="space-y-6">
@@ -225,6 +227,10 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
                 </>
               ) : null}
             </div>
+          </Card>
+          <Card>
+            <CardHeader title="Canvas grade sync" />
+            <CanvasSync runId={run.id} ready={canvasSyncReady} />
           </Card>
 
           {graded.length > 0 && canvasIssues.length > 0 ? (

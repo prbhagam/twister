@@ -2,9 +2,8 @@
 
 ## Authentication and access
 
-- Replaced the shared environment-based instructor sign-in with local multi-user
-  accounts, scrypt password hashes, opaque database-backed sessions, expiration,
-  logout, and first-owner bootstrap configuration.
+- Kept the original environment-configured instructor sign-in while adding scrypt
+  password hashing, opaque database-backed sessions, expiration, and logout.
 - Added centralized server-side permissions for OWNER, INSTRUCTOR, QUESTION_EDITOR,
   GRADER, and AUDITOR roles.
 - Added active per-course memberships and authorization checks for course, exam,
@@ -24,12 +23,14 @@
 ## Question and generation workflow
 
 - Added question workflow states: DRAFT, IN_REVIEW, APPROVED, and RETIRED.
-- Added visible per-question status controls and an approved-all-valid-questions
+- Added visible per-question status controls and an approve-all-valid-questions
   action; generation remains blocked until active questions are approved.
 - Preserved the existing immutable generation snapshots and deterministic seeded
   layout behavior.
 - Improved small-run generation progress and ensure renderer startup failures mark
   the run failed rather than leaving it indefinitely running.
+- Added server-side Canvas roster import by Canvas course ID and confirmed Canvas
+  grade posting for currently graded, Canvas-mapped students.
 
 ## Prisma and local development
 

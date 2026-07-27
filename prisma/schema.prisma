@@ -186,6 +186,7 @@ model Student {
   // without a GT Account column yields no username.
   gtId      String?
   username  String?
+  canvasUserId String?
   firstName String
   lastName  String
   email     String
@@ -200,6 +201,7 @@ model Student {
   @@unique([courseId, gtId])
   @@unique([courseId, username])
   @@index([courseId, lastName])
+  @@index([courseId, canvasUserId])
 }
 
 // ---------------------------------------------------------------------- run side

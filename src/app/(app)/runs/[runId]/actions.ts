@@ -12,6 +12,7 @@ import {
 import type { LayoutEntry } from '@/lib/seed'
 import { audit } from '@/lib/audit'
 import { requireRunPermission } from '@/lib/authorization'
+import { postCanvasGrade } from '@/lib/canvas'
 
 export interface GradingPreviewState {
   ok?: boolean
@@ -228,4 +229,40 @@ export async function retryRun(formData: FormData) {
     console.error(`[twister] generation run ${runId} failed:`, error)
   })
   revalidatePath(`/runs/${runId}`)
+}
+
+export interface CanvasSyncState { ok?: boolean; error?: string; synced?: number }
+
+/** Posts the active, final grading import to one Canvas assignment. The typed
+ * confirmation ensures a browser click cannot silently change student records. */
+export async function syncCanvasGrades(_prev: CanvasSyncState, formData: FormData): Promise<CanvasSyncState> {
+  const runId = String(formData.get('runId'))
+  const assignmentId = String(formData.get('assignmentId') ?? '').trim()
+  const confirmation = String(formData.get('confirmation') ?? '').trim()
+  const { user, run } = await requireRunPermission(runId, 'export:grades')
+  if (!/^\d+$/.test(assignmentId)) return { error: 'Enter the numeric Canvas assignment ID.' }
+  if (confirmation !== 'PUSH') return { error: 'Type PUSH to confirm posting grades to Canvas.' }
+
+  const exam = await prisma.exam.findUniqueOrThrow({ where: { id: run.examId }, include: { course: true } })
+  if (!exam.course.canvasCourseId) return { error: 'Import the Canvas roster for this course before syncing grades.' }
+  const activeImport = await prisma.gradingImport.findFirst({ where: { runId, isActive: true }, orderBy: { createdAt: 'desc' } })
+  if (!activeImport) return { error: 'Grade the run before syncing to Canvas.' }
+  const results = await prisma.studentResult.findMany({ where: { importId: activeImport.id }, include: { studentExam: { include: { student: true } } } })
+  const eligible = results.filter((result) => result.status === 'graded' && result.studentExam.student.canvasUserId)
+  if (!eligible.length) return { error: 'There are no graded Canvas-mapped results to sync.' }
+
+  try {
+    for (const result of eligible) {
+      await postCanvasGrade({
+        courseId: exam.course.canvasCourseId,
+        assignmentId,
+        studentCanvasUserId: result.studentExam.student.canvasUserId!,
+        grade: result.earned,
+      })
+    }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Canvas grade sync failed. Some grades may have been posted; review Canvas before retrying.' }
+  }
+  await audit({ actorUserId: user.id, action: 'canvas.grades_synced', entityType: 'generation_run', entityId: runId, courseId: exam.courseId, metadata: { assignmentId, count: eligible.length } })
+  return { ok: true, synced: eligible.length }
 }

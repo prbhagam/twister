@@ -36,10 +36,9 @@ Then:
 npm run dev        # http://localhost:3000
 ```
 
-For a new database, sign in once with the bootstrap email/password to create the
-first `OWNER`. The bootstrap variables are only accepted while no users exist. Local
-authentication is for development or controlled deployment; Georgia Tech CAS/Duo is
-not implemented.
+Sign in with `TWISTER_ADMIN_EMAIL` and `TWISTER_ADMIN_PASSWORD`. The account is
+created on its first sign-in and is granted OWNER access. Local authentication is for
+development or controlled deployment; Georgia Tech CAS/Duo is not implemented.
 
 ## Access control and operational safety
 

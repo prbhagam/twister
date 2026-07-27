@@ -2,30 +2,24 @@
 
 import { useActionState } from 'react'
 import { Button, Notice } from '@/components/ui'
-import { importRoster, type RosterImportState } from './actions'
+import { importCanvasRoster, type RosterImportState } from './actions'
 
 export function RosterUpload({ courseId }: { courseId: string }) {
-  const [state, action, pending] = useActionState<RosterImportState, FormData>(importRoster, {})
+  const [state, action, pending] = useActionState<RosterImportState, FormData>(importCanvasRoster, {})
 
   return (
     <div className="space-y-3 px-5 py-4">
       <form action={action} className="flex flex-wrap items-center gap-2">
         <input type="hidden" name="courseId" value={courseId} />
-        <input
-          type="file"
-          name="file"
-          accept=".csv,text/csv"
-          required
-          className="text-sm file:mr-3 file:rounded-md file:border file:border-slate-300 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-slate-50"
-        />
+        <input name="canvasCourseId" inputMode="numeric" required placeholder="Canvas course ID" className="rounded-md border border-slate-300 px-3 py-1.5 text-sm" />
         <Button type="submit" disabled={pending}>
           {pending ? 'Importing…' : 'Import roster'}
         </Button>
       </form>
 
       <p className="text-xs text-slate-500">
-        The GT export works as-is. Only rows with Role = Student are imported; re-importing updates
-        existing students rather than duplicating them.
+        Downloads active Student enrollments from Canvas. Re-importing updates students by GT ID;
+        the Canvas user ID is retained for secure grade sync.
       </p>
 
       {state.errors?.length ? (

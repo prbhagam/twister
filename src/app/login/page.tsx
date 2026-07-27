@@ -5,8 +5,8 @@ import { audit } from '@/lib/audit'
 import { Button, Card, Input, Label, Notice } from '@/components/ui'
 
 /**
- * Local development authentication. The bootstrap secret is consumed only to create
- * the first owner; all later users must be provisioned by an owner.
+ * Controlled local instructor login. Credentials remain in the environment as in
+ * the original application; the persisted row only holds a secure password hash.
  */
 async function login(formData: FormData) {
   'use server'
@@ -15,39 +15,17 @@ async function login(formData: FormData) {
   const password = String(formData.get('password') ?? '')
   const next = String(formData.get('next') ?? '/')
 
-  const count = await prisma.user.count()
-  let user = await prisma.user.findUnique({ where: { email } })
-  if (!user && count === 0) {
-    const bootstrapEmail = (process.env.TWISTER_BOOTSTRAP_OWNER_EMAIL ?? '').trim().toLowerCase()
-    const bootstrapPassword = process.env.TWISTER_BOOTSTRAP_OWNER_PASSWORD ?? ''
-    if (!bootstrapEmail || !bootstrapPassword) redirect('/login?error=unconfigured')
-    if (email === bootstrapEmail && password === bootstrapPassword) {
-      user = await prisma.user.create({ data: { email, passwordHash: hashPassword(password), role: 'OWNER' } })
-      await audit({ actorUserId: user.id, action: 'user.bootstrap_owner', entityType: 'user', entityId: user.id })
-    }
-  }
-  if (!user || !user.active || !verifyPassword(password, user.passwordHash)) {
+  const adminEmail = (process.env.TWISTER_ADMIN_EMAIL ?? '').trim().toLowerCase()
+  const adminPassword = process.env.TWISTER_ADMIN_PASSWORD ?? ''
+  if (!adminEmail || !adminPassword) redirect('/login?error=unconfigured')
+  if (email !== adminEmail || password !== adminPassword) {
     await audit({ action: 'auth.login_failed', entityType: 'user', metadata: { email } })
     redirect(`/login?error=invalid&next=${encodeURIComponent(next)}`)
   }
-
-  // One-time bridge from TWISTER's original single-instructor deployment. The
-  // invariant is deliberately narrow: exactly one user and no memberships. That
-  // user owned every pre-existing course, so promote it and attach memberships
-  // atomically. Multi-user installations are never changed implicitly.
-  if (count === 1) {
-    const memberships = await prisma.courseMembership.count()
-    if (memberships === 0) {
-      const courses = await prisma.course.findMany({ select: { id: true } })
-      await prisma.$transaction([
-        prisma.user.update({ where: { id: user.id }, data: { role: 'OWNER' } }),
-        ...courses.map((course) => prisma.courseMembership.create({
-          data: { userId: user!.id, courseId: course.id, role: 'OWNER', createdById: user!.id },
-        })),
-      ])
-      user = { ...user, role: 'OWNER' }
-      await audit({ actorUserId: user.id, action: 'auth.legacy_owner_migrated', entityType: 'user', entityId: user.id, metadata: { courses: courses.length } })
-    }
+  let user = await prisma.user.findUnique({ where: { email } })
+  if (!user) user = await prisma.user.create({ data: { email, passwordHash: hashPassword(password), role: 'OWNER' } })
+  else if (!user.active || !verifyPassword(password, user.passwordHash)) {
+    user = await prisma.user.update({ where: { id: user.id }, data: { passwordHash: hashPassword(password), active: true, role: 'OWNER' } })
   }
 
   await setSession(user.id)
@@ -76,8 +54,8 @@ export default async function LoginPage({
         {error === 'unconfigured' ? (
           <div className="mb-4">
             <Notice tone="amber" title="Not configured">
-              Set <code className="font-mono">TWISTER_BOOTSTRAP_OWNER_EMAIL</code> and{' '}
-              <code className="font-mono">TWISTER_BOOTSTRAP_OWNER_PASSWORD</code> in <code className="font-mono">.env</code>,
+              Set <code className="font-mono">TWISTER_ADMIN_EMAIL</code> and{' '}
+              <code className="font-mono">TWISTER_ADMIN_PASSWORD</code> in <code className="font-mono">.env</code>,
               then restart.
             </Notice>
           </div>
