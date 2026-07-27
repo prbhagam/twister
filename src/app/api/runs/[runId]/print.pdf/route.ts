@@ -3,10 +3,12 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { PRINT_FILE, runDir } from '@/lib/generation'
+import { authorizeRunApi } from '@/lib/authorization'
 
 /** Streams the merged print file; it can be ~90 MB for a full class. */
 export async function GET(_request: Request, { params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params
+  if (!await authorizeRunApi(runId, 'exam:generate')) return new Response('Not found', { status: 404 })
   const file = path.join(runDir(runId), PRINT_FILE)
 
   let size: number

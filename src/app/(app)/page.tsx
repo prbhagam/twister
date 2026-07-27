@@ -2,11 +2,14 @@ import Link from 'next/link'
 import { prisma } from '@/lib/db'
 import { Button, Card, CardHeader, Empty, Input, Label } from '@/components/ui'
 import { createCourse } from './actions'
+import { requireUser } from '@/lib/authorization'
 
 export const dynamic = 'force-dynamic'
 
 export default async function DashboardPage() {
+  const user = await requireUser()
   const courses = await prisma.course.findMany({
+    where: user.role === 'OWNER' ? { archivedAt: null } : { archivedAt: null, memberships: { some: { userId: user.id, active: true } } },
     orderBy: { createdAt: 'desc' },
     include: {
       _count: { select: { exams: true, students: true } },

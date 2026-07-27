@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { readSessionToken, SESSION_COOKIE } from '@/lib/auth'
+import { hasSessionCookie, SESSION_COOKIE } from '@/lib/auth'
 
 const PUBLIC = ['/login', '/api/auth/login']
 
@@ -9,7 +9,7 @@ export default function proxy(req: NextRequest) {
     return NextResponse.next()
   }
 
-  if (readSessionToken(req.cookies.get(SESSION_COOKIE)?.value)) {
+  if (hasSessionCookie(req.cookies.get(SESSION_COOKIE)?.value)) {
     return NextResponse.next()
   }
 

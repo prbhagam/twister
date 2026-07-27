@@ -18,64 +18,118 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
+  id              String   @id @default(cuid())
+  email           String   @unique
+  passwordHash    String
+  role            String   @default("INSTRUCTOR") // OWNER | INSTRUCTOR | QUESTION_EDITOR | GRADER | AUDITOR
+  active          Boolean  @default(true)
+  externalSubject String?  @unique // future trusted identity-provider subject
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sessions          Session[]
+  courseMemberships CourseMembership[]
+  auditEvents       AuditEvent[]       @relation("AuditActor")
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 // ---------------------------------------------------------------- authoring side
 
 model Course {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   name           String // "CS 1301"
   title          String? // "Introduction to Computing"
   term           String?
   // Reserved for a future Canvas API integration; unused today. Kept so reviving it
   // is a code change rather than a migration. See the `canvas-api` git tag.
   canvasCourseId String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
+  archivedAt     DateTime?
+  archivedById   String?
 
   exams         Exam[]
   students      Student[]
   rosterImports RosterImport[]
+  memberships   CourseMembership[]
+  auditEvents   AuditEvent[]
+
+  @@index([archivedAt])
+}
+
+model CourseMembership {
+  id          String   @id @default(cuid())
+  userId      String
+  courseId    String
+  role        String // optional scoped role; otherwise the user's application role applies
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  createdById String?
+  updatedAt   DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId, active])
 }
 
 model Exam {
-  id             String   @id @default(cuid())
-  courseId       String
-  title          String
-  instructorSeed String
-  instructions   String? // markdown, printed on the cover page
+  id                 String    @id @default(cuid())
+  courseId           String
+  title              String
+  instructorSeed     String
+  instructions       String? // markdown, printed on the cover page
   // Reserved for a future Canvas API integration; unused today. See `canvasCourseId`.
   canvasAssignmentId String?
   // Which student identifier seeds the randomization and gets stamped into the
   // bubble sheet's ID box: "gtId" or "username". This MUST match whatever
   // Gradescope matches its roster on, or no scanned sheet will auto-match.
   // Changing it changes every student's exam, so it is snapshotted per run.
-  identityField      String  @default("gtId")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  identityField      String    @default("gtId")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  lifecycle          String    @default("DRAFT") // DRAFT | READY_FOR_REVIEW | APPROVED | GENERATED | LOCKED | GRADED | ARCHIVED
+  archivedAt         DateTime?
+  archivedById       String?
 
   course    Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
   questions Question[]
   runs      GenerationRun[]
 
   @@index([courseId])
+  @@index([archivedAt])
 }
 
 model Question {
-  id        String   @id @default(cuid())
-  examId    String
-  order     Int
-  title     String? // internal label for your own navigation; never printed
-  points    Float    @default(1)
-  createdAt DateTime @default(now())
+  id                String    @id @default(cuid())
+  examId            String
+  order             Int
+  title             String? // internal label for your own navigation; never printed
+  points            Float     @default(1)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  workflowStatus    String    @default("DRAFT") // DRAFT | IN_REVIEW | APPROVED | RETIRED
+  statusChangedAt   DateTime  @default(now())
+  statusChangedById String?
+  archivedAt        DateTime?
 
   exam       Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
   variations Variation[]
 
   @@index([examId, order])
+  @@index([workflowStatus, archivedAt])
 }
 
 model Variation {
@@ -108,13 +162,15 @@ model Choice {
 // ------------------------------------------------------------------- roster side
 
 model RosterImport {
-  id        String   @id @default(cuid())
-  courseId  String
-  filename  String
-  imported  Int      @default(0)
-  skipped   Int      @default(0)
-  skipDetail String  @default("{}") // JSON: counts by role that were excluded
-  createdAt DateTime @default(now())
+  id           String    @id @default(cuid())
+  courseId     String
+  filename     String
+  imported     Int       @default(0)
+  skipped      Int       @default(0)
+  skipDetail   String    @default("{}") // JSON: counts by role that were excluded
+  createdAt    DateTime  @default(now())
+  archivedAt   DateTime?
+  uploadedById String?
 
   course   Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
   students Student[]
@@ -166,6 +222,10 @@ model GenerationRun {
   instructions   String?
   createdAt      DateTime  @default(now())
   finishedAt     DateTime?
+  createdById    String?
+  inputChecksum  String?
+  configuration  String    @default("{}")
+  lockedAt       DateTime?
 
   exam         Exam            @relation(fields: [examId], references: [id], onDelete: Cascade)
   questions    RunQuestion[]
@@ -176,7 +236,7 @@ model GenerationRun {
 }
 
 model RunQuestion {
-  id               String @id @default(cuid())
+  id               String  @id @default(cuid())
   runId            String
   sourceQuestionId String
   order            Int
@@ -246,14 +306,18 @@ model StudentExam {
 // ------------------------------------------------------------------ grading side
 
 model GradingImport {
-  id        String   @id @default(cuid())
-  runId     String
-  filename  String
-  matched   Int      @default(0)
+  id           String    @id @default(cuid())
+  runId        String
+  filename     String
+  matched      Int       @default(0)
   // JSON: { csvOnly: [{id,name}], rosterOnly: [{id,name}], missingStatus: n }
-  unmatched String   @default("{}")
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  unmatched    String    @default("{}")
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  uploadedById String?
+  sha256       String?
+  storagePath  String?
+  archivedAt   DateTime?
 
   run     GenerationRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
   results StudentResult[]
@@ -301,8 +365,28 @@ model Override {
   awarded       Float
   note          String?
   createdAt     DateTime @default(now())
+  createdById   String?
 
   studentExam StudentExam @relation(fields: [studentExamId], references: [id], onDelete: Cascade)
 
   @@unique([studentExamId, position])
+}
+
+model AuditEvent {
+  id            String   @id @default(cuid())
+  actorUserId   String?
+  action        String
+  entityType    String
+  entityId      String?
+  courseId      String?
+  metadata      String   @default("{}")
+  correlationId String?
+  createdAt     DateTime @default(now())
+
+  actor  User?   @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  course Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+
+  @@index([courseId, createdAt])
+  @@index([action, createdAt])
+  @@index([entityType, entityId])
 }

@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/db'
 import { parseRoster } from '@/lib/roster'
+import { audit } from '@/lib/audit'
+import { requireCoursePermission } from '@/lib/authorization'
 
 export interface RosterImportState {
   ok?: boolean
@@ -23,6 +25,7 @@ export async function importRoster(
   formData: FormData,
 ): Promise<RosterImportState> {
   const courseId = String(formData.get('courseId'))
+  const user = await requireCoursePermission(courseId, 'course:manage')
   const file = formData.get('file')
 
   if (!(file instanceof File) || file.size === 0) {
@@ -41,8 +44,10 @@ export async function importRoster(
       imported: result.students.length,
       skipped: result.excluded.reduce((sum, e) => sum + e.count, 0),
       skipDetail: JSON.stringify(result.excluded),
+      uploadedById: user.id,
     },
   })
+  await audit({ actorUserId: user.id, action: 'roster.imported', entityType: 'roster_import', entityId: record.id, courseId, metadata: { imported: result.students.length, skipped: result.excluded.reduce((sum, e) => sum + e.count, 0) } })
 
   for (const student of result.students) {
     // The GT roster CSV always carries a GT ID, so it stays the upsert key here;

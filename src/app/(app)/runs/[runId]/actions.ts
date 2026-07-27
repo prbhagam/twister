@@ -10,6 +10,8 @@ import {
   parseGradescopeCsv,
 } from '@/lib/grading'
 import type { LayoutEntry } from '@/lib/seed'
+import { audit } from '@/lib/audit'
+import { requireRunPermission } from '@/lib/authorization'
 
 export interface GradingPreviewState {
   ok?: boolean
@@ -46,6 +48,7 @@ export async function previewGrading(
   formData: FormData,
 ): Promise<GradingPreviewState> {
   const runId = String(formData.get('runId'))
+  await requireRunPermission(runId, 'grade:write')
   const file = formData.get('file')
   if (!(file instanceof File) || file.size === 0) return { error: 'Choose a Gradescope CSV to upload.' }
 
@@ -83,6 +86,7 @@ export async function commitGrading(
   formData: FormData,
 ): Promise<GradingCommitState> {
   const runId = String(formData.get('runId'))
+  const { user, run } = await requireRunPermission(runId, 'grade:write')
   const filename = String(formData.get('filename') ?? 'gradescope.csv')
   const csvText = String(formData.get('csvText') ?? '')
   if (!csvText) return { error: 'Nothing to import — upload the CSV again.' }
@@ -119,6 +123,7 @@ export async function commitGrading(
         missingStatus: report.missingStatus,
       }),
       isActive: true,
+      uploadedById: user.id,
     },
   })
 
@@ -161,6 +166,7 @@ export async function commitGrading(
   }
 
   revalidatePath(`/runs/${runId}`)
+  await audit({ actorUserId: user.id, action: 'gradescope.imported', entityType: 'grading_import', entityId: record.id, courseId: (await prisma.exam.findUniqueOrThrow({ where: { id: run.examId } })).courseId, metadata: { matched: graded } })
   return { ok: true, graded }
 }
 
@@ -173,6 +179,7 @@ export async function setOverride(formData: FormData) {
   const position = Number(formData.get('position'))
   const clear = formData.get('clear') === '1'
   const runId = String(formData.get('runId'))
+  const { user, run } = await requireRunPermission(runId, 'grade:write')
 
   if (clear) {
     await prisma.override.deleteMany({ where: { studentExamId, position } })
@@ -181,8 +188,8 @@ export async function setOverride(formData: FormData) {
     const note = String(formData.get('note') ?? '').trim() || null
     await prisma.override.upsert({
       where: { studentExamId_position: { studentExamId, position } },
-      create: { studentExamId, position, awarded, note },
-      update: { awarded, note },
+      create: { studentExamId, position, awarded, note, createdById: user.id },
+      update: { awarded, note, createdById: user.id },
     })
   }
 
@@ -210,11 +217,13 @@ export async function setOverride(formData: FormData) {
 
   revalidatePath(`/runs/${runId}/students/${studentExamId}`)
   revalidatePath(`/runs/${runId}`)
+  await audit({ actorUserId: user.id, action: 'grading.manual_override', entityType: 'student_exam', entityId: studentExamId, courseId: (await prisma.exam.findUniqueOrThrow({ where: { id: run.examId } })).courseId, metadata: { position, clear } })
 }
 
 /** Re-renders every PDF for a run — used after a failed or interrupted run. */
 export async function retryRun(formData: FormData) {
   const runId = String(formData.get('runId'))
+  await requireRunPermission(runId, 'exam:generate')
   void executeRun(runId).catch((error) => {
     console.error(`[twister] generation run ${runId} failed:`, error)
   })

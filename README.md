@@ -36,6 +36,24 @@ Then:
 npm run dev        # http://localhost:3000
 ```
 
+For a new database, sign in once with the bootstrap email/password to create the
+first `OWNER`. The bootstrap variables are only accepted while no users exist. Local
+authentication is for development or controlled deployment; Georgia Tech CAS/Duo is
+not implemented.
+
+## Access control and operational safety
+
+TWISTER has `OWNER`, `INSTRUCTOR`, `QUESTION_EDITOR`, `GRADER`, and `AUDITOR`
+roles. Server-side checks require active per-course membership, so changing a route
+or form identifier cannot grant access to another course. Sessions are opaque,
+HTTP-only cookies backed by a database record with a 12-hour expiry.
+
+The application writes append-only audit events for authentication and high-value
+workflow actions. Normal course, exam, and question removal is archival. Existing
+generation-run snapshots preserve exactly what was generated even after question
+edits. See [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) for the reviewed
+baseline, security design, deferred work, CAS boundary, and PostgreSQL guidance.
+
 ### About `assets/`
 
 `assets/Gradescope Bubble Sheet.pdf` is the blank scantron template and is committed —

@@ -1,79 +1,74 @@
-import { createHmac, timingSafeEqual, randomBytes, scryptSync } from 'node:crypto'
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
+import { prisma } from '@/lib/db'
 
 const COOKIE = 'twister_session'
-const MAX_AGE_SECONDS = 60 * 60 * 12
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
 
-function secret() {
-  const s = process.env.TWISTER_SESSION_SECRET
-  if (!s) throw new Error('TWISTER_SESSION_SECRET is not set (see .env.example)')
-  return s
+export interface TrustedIdentity {
+  email: string
+  subject?: string
+  displayName?: string
 }
 
-// --- password hashing (scrypt; no native build step) -------------------------
+/** Boundary for a future CAS adapter. The adapter must supply a *verified* identity;
+ * this app maps its normalized email/subject to a local user and local role. */
+export interface AuthenticationAdapter {
+  authenticate(credentials: unknown): Promise<TrustedIdentity | null>
+}
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16)
-  const key = scryptSync(password, salt, 64)
-  return `scrypt:${salt.toString('hex')}:${key.toString('hex')}`
+  return `scrypt:${salt.toString('hex')}:${scryptSync(password, salt, 64).toString('hex')}`
 }
 
 export function verifyPassword(password: string, stored: string): boolean {
   const [scheme, saltHex, keyHex] = stored.split(':')
   if (scheme !== 'scrypt' || !saltHex || !keyHex) return false
-  const key = scryptSync(password, Buffer.from(saltHex, 'hex'), 64)
+  const actual = scryptSync(password, Buffer.from(saltHex, 'hex'), 64)
   const expected = Buffer.from(keyHex, 'hex')
-  return key.length === expected.length && timingSafeEqual(key, expected)
+  return actual.length === expected.length && timingSafeEqual(actual, expected)
 }
 
-// --- signed session cookie ---------------------------------------------------
-
-function sign(payload: string): string {
-  return createHmac('sha256', secret()).update(payload).digest('base64url')
+function tokenHash(token: string) {
+  return createHash('sha256').update(token).digest('hex')
 }
 
-export function createSessionToken(email: string): string {
-  const payload = `${Buffer.from(email).toString('base64url')}.${Date.now() + MAX_AGE_SECONDS * 1000}`
-  return `${payload}.${sign(payload)}`
-}
-
-/** Returns the session email, or null if the token is absent, tampered, or expired. */
-export function readSessionToken(token: string | undefined): string | null {
-  if (!token) return null
-  const parts = token.split('.')
-  if (parts.length !== 3) return null
-  const [emailB64, expiresRaw, mac] = parts
-  const payload = `${emailB64}.${expiresRaw}`
-
-  const expected = Buffer.from(sign(payload))
-  const actual = Buffer.from(mac)
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null
-
-  const expires = Number(expiresRaw)
-  if (!Number.isFinite(expires) || Date.now() > expires) return null
-
-  return Buffer.from(emailB64, 'base64url').toString('utf8')
-}
-
-export async function setSession(email: string) {
+export async function setSession(userId: string) {
+  const token = randomBytes(32).toString('base64url')
+  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000)
+  await prisma.session.create({ data: { userId, tokenHash: tokenHash(token), expiresAt } })
   const jar = await cookies()
-  jar.set(COOKIE, createSessionToken(email), {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: MAX_AGE_SECONDS,
+  jar.set(COOKIE, token, {
+    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production',
+    path: '/', maxAge: SESSION_MAX_AGE_SECONDS,
   })
 }
 
 export async function clearSession() {
   const jar = await cookies()
+  const token = jar.get(COOKIE)?.value
+  if (token) await prisma.session.deleteMany({ where: { tokenHash: tokenHash(token) } })
   jar.delete(COOKIE)
 }
 
-export async function getSession(): Promise<string | null> {
-  const jar = await cookies()
-  return readSessionToken(jar.get(COOKIE)?.value)
+export async function getCurrentUser() {
+  const token = (await cookies()).get(COOKIE)?.value
+  if (!token) return null
+  const session = await prisma.session.findUnique({
+    where: { tokenHash: tokenHash(token) }, include: { user: true },
+  })
+  if (!session || session.expiresAt <= new Date() || !session.user.active) {
+    if (session) await prisma.session.delete({ where: { id: session.id } })
+    return null
+  }
+  return session.user
 }
 
+/** Compatibility helper for layouts that only display the signed-in email. */
+export async function getSession() { return (await getCurrentUser())?.email ?? null }
 export const SESSION_COOKIE = COOKIE
+
+/** Proxy cannot query SQLite safely; it only performs an inexpensive preliminary gate.
+ * Every sensitive operation must call `requireUser`/authorization helpers server-side. */
+export function hasSessionCookie(token: string | undefined) { return Boolean(token && token.length >= 32) }

@@ -6,6 +6,12 @@ import { prisma } from '@/lib/db'
 import { createRun, executeRun } from '@/lib/generation'
 import { parseQuestionCsv } from '@/lib/questions-csv'
 import { MAX_CHOICES } from '@/lib/seed'
+import { audit } from '@/lib/audit'
+import { requireExamPermission } from '@/lib/authorization'
+import { hasBlockingErrors, validateExam } from '@/lib/exam-validation'
+
+const QUESTION_STATUSES = ['DRAFT', 'IN_REVIEW', 'APPROVED', 'RETIRED'] as const
+type QuestionStatus = (typeof QUESTION_STATUSES)[number]
 
 async function nextQuestionOrder(examId: string): Promise<number> {
   const last = await prisma.question.findFirst({ where: { examId }, orderBy: { order: 'desc' } })
@@ -14,6 +20,7 @@ async function nextQuestionOrder(examId: string): Promise<number> {
 
 export async function addQuestion(formData: FormData) {
   const examId = String(formData.get('examId'))
+  const user = await requireExamPermission(examId, 'question:edit')
 
   // A new question starts with one variation and five blank choices so the editor
   // opens on something editable rather than an empty shell.
@@ -39,18 +46,22 @@ export async function addQuestion(formData: FormData) {
       },
     },
   })
+  const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
+  await audit({ actorUserId: user.id, action: 'question.created', entityType: 'question', entityId: question.id, courseId: exam.courseId })
 
   redirect(`/exams/${examId}/questions/${question.id}`)
 }
 
 export async function deleteQuestion(formData: FormData) {
-  const question = await prisma.question.delete({
-    where: { id: String(formData.get('questionId')) },
-  })
+  const question = await prisma.question.findUniqueOrThrow({ where: { id: String(formData.get('questionId')) } })
+  const user = await requireExamPermission(question.examId, 'question:edit')
+  await prisma.question.update({ where: { id: question.id }, data: { archivedAt: new Date(), workflowStatus: 'RETIRED' } })
+  const exam = await prisma.exam.findUniqueOrThrow({ where: { id: question.examId } })
+  await audit({ actorUserId: user.id, action: 'question.archived', entityType: 'question', entityId: question.id, courseId: exam.courseId })
 
   // Close the gap so question numbers stay contiguous.
   const remaining = await prisma.question.findMany({
-    where: { examId: question.examId },
+    where: { examId: question.examId, archivedAt: null },
     orderBy: { order: 'asc' },
   })
   await Promise.all(
@@ -66,6 +77,7 @@ export async function moveQuestion(formData: FormData) {
   const direction = String(formData.get('direction')) === 'up' ? -1 : 1
 
   const question = await prisma.question.findUniqueOrThrow({ where: { id: questionId } })
+  await requireExamPermission(question.examId, 'question:edit')
   const neighbour = await prisma.question.findFirst({
     where: {
       examId: question.examId,
@@ -81,6 +93,64 @@ export async function moveQuestion(formData: FormData) {
   ])
 
   revalidatePath(`/exams/${question.examId}`)
+}
+
+/** Approval is deliberately server-side and only available to course managers.
+ * Imported questions remain DRAFT until their complete bank validates. */
+export async function approveAllQuestions(formData: FormData) {
+  const examId = String(formData.get('examId'))
+  const user = await requireExamPermission(examId, 'course:manage')
+  const exam = await prisma.exam.findUniqueOrThrow({
+    where: { id: examId },
+    include: {
+      questions: {
+        where: { archivedAt: null },
+        orderBy: { order: 'asc' },
+        include: { variations: { include: { choices: true } } },
+      },
+    },
+  })
+  if (hasBlockingErrors(validateExam(exam))) return
+
+  const now = new Date()
+  await prisma.question.updateMany({
+    where: { examId, archivedAt: null },
+    data: { workflowStatus: 'APPROVED', statusChangedAt: now, statusChangedById: user.id },
+  })
+  await audit({ actorUserId: user.id, action: 'questions.approved', entityType: 'exam', entityId: examId, courseId: exam.courseId, metadata: { count: exam.questions.length } })
+  revalidatePath(`/exams/${examId}`)
+}
+
+/** Move a single question through the review workflow. */
+export async function transitionQuestionStatus(formData: FormData) {
+  const questionId = String(formData.get('questionId'))
+  const examId = String(formData.get('examId'))
+  const status = String(formData.get('status')) as QuestionStatus
+  if (!QUESTION_STATUSES.includes(status)) return
+
+  const question = await prisma.question.findUniqueOrThrow({
+    where: { id: questionId }, include: { variations: { include: { choices: true } } },
+  })
+  if (question.examId !== examId || question.archivedAt) return
+  const user = await requireExamPermission(examId, 'question:edit')
+
+  // Editors can draft and submit for review. Approval and retirement are a
+  // course-manager decision; server-side enforcement does not rely on the UI.
+  if ((status === 'APPROVED' || status === 'RETIRED') && user.role !== 'OWNER' && user.role !== 'INSTRUCTOR') return
+  if (status === 'APPROVED' && hasBlockingErrors(validateExam({ instructorSeed: 'validated-per-question', questions: [question] }))) return
+
+  const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
+  await prisma.question.update({
+    where: { id: questionId },
+    data: {
+      workflowStatus: status,
+      statusChangedAt: new Date(),
+      statusChangedById: user.id,
+      ...(status === 'RETIRED' ? { archivedAt: new Date() } : {}),
+    },
+  })
+  await audit({ actorUserId: user.id, action: `question.status_${status.toLowerCase()}`, entityType: 'question', entityId: questionId, courseId: exam.courseId })
+  revalidatePath(`/exams/${examId}`)
 }
 
 export interface CsvImportState {
@@ -99,6 +169,7 @@ export async function importQuestionCsv(
   formData: FormData,
 ): Promise<CsvImportState> {
   const examId = String(formData.get('examId'))
+  const user = await requireExamPermission(examId, 'question:edit')
   const questionId = formData.get('questionId') ? String(formData.get('questionId')) : null
   const file = formData.get('file')
 
@@ -129,6 +200,8 @@ export async function importQuestionCsv(
     )
 
   if (questionId) {
+    const existing = await prisma.question.findUniqueOrThrow({ where: { id: questionId } })
+    if (existing.examId !== examId) return { errors: ['Question does not belong to this exam.'] }
     if (result.questions.length > 1) {
       return {
         errors: [
@@ -140,6 +213,8 @@ export async function importQuestionCsv(
     // leave the old variations behind.
     await prisma.variation.deleteMany({ where: { questionId } })
     await Promise.all(writeVariations(questionId, result.questions[0]))
+    const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
+    await audit({ actorUserId: user.id, action: 'question.edited', entityType: 'question', entityId: questionId, courseId: exam.courseId })
 
     revalidatePath(`/exams/${examId}/questions/${questionId}`)
     return {
@@ -149,7 +224,7 @@ export async function importQuestionCsv(
     }
   }
 
-  await prisma.question.deleteMany({ where: { examId } })
+  await prisma.question.updateMany({ where: { examId, archivedAt: null }, data: { archivedAt: new Date(), workflowStatus: 'RETIRED' } })
   for (const [index, question] of result.questions.entries()) {
     const created = await prisma.question.create({
       data: {
@@ -160,6 +235,8 @@ export async function importQuestionCsv(
     })
     await Promise.all(writeVariations(created.id, question))
   }
+  const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
+  await audit({ actorUserId: user.id, action: 'questions.imported', entityType: 'exam', entityId: examId, courseId: exam.courseId, metadata: { questions: result.questions.length } })
 
   revalidatePath(`/exams/${examId}`)
   return {
@@ -176,15 +253,21 @@ export interface GenerateState {
 
 export async function startGeneration(_prev: GenerateState, formData: FormData): Promise<GenerateState> {
   const examId = String(formData.get('examId'))
+  const user = await requireExamPermission(examId, 'exam:generate')
   const sections = formData.getAll('sections').map(String).filter(Boolean)
   const label = String(formData.get('label') ?? '').trim() || undefined
 
   let runId: string
   try {
+    const unapproved = await prisma.question.count({ where: { examId, archivedAt: null, workflowStatus: { not: 'APPROVED' } } })
+    if (unapproved) return { error: `${unapproved} question(s) are not approved.` }
     ;({ runId } = await createRun({ examId, sections, label }))
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) }
   }
+  const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
+  await prisma.exam.update({ where: { id: examId }, data: { lifecycle: 'GENERATED' } })
+  await audit({ actorUserId: user.id, action: 'exam.generation_started', entityType: 'generation_run', entityId: runId, courseId: exam.courseId })
 
   // Rendering hundreds of PDFs takes minutes; it runs detached and the run page
   // polls completedCount rather than holding this request open.
