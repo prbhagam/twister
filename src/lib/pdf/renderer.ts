@@ -37,6 +37,22 @@ export interface RenderedExam {
 }
 
 /**
+ * Puts a blank page behind the bubble sheet so it occupies a whole sheet alone.
+ *
+ * Students tear the scantron off the packet before starting. Printed duplex, page 2
+ * lands on the back of page 1, so without this the cover page leaves with the
+ * scantron — and whatever is on the back gets scanned along with it.
+ *
+ * Deliberately empty: no footer, no notice. Anything printed here could end up in
+ * the scan and interfere with how Gradescope registers the sheet.
+ */
+export function addScantronBackPage(doc: PDFDocument): void {
+  doc.insertPage(1, doc.addPage(SHEET_SIZE))
+  // addPage appended a second copy; drop it, keeping only the inserted one.
+  doc.removePage(doc.getPageCount() - 1)
+}
+
+/**
  * Appends a filler page when a booklet would otherwise end on an odd page.
  *
  * Without this, printing the merged file double-sided puts the *next* student's
@@ -151,6 +167,7 @@ export class ExamRenderer {
 
     const doc = await PDFDocument.load(bodyPdf)
     await this.stamper.prependTo(doc, { name: exam.studentName, gtId: exam.gtId })
+    addScantronBackPage(doc)
     await padBooklet(doc, exam)
 
     return { pdf: await doc.save(), pageCount: doc.getPageCount() }

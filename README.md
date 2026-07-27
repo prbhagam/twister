@@ -72,23 +72,41 @@ loads a demo exam plus a roster, first drop your own export at
 
 ## Printing
 
-Every booklet is padded to an **even** page count, with a trailing page that says so.
-This is not cosmetic: booklets vary in length, and printing the merged file
-double-sided without it puts the *next* student's bubble sheet on the back of the
-previous student's last page. In one 404-student run, 259 booklets were odd-length.
+Booklets are built for **double-sided** printing:
+
+| Sheet | Front | Back |
+|---|---|---|
+| 1 | Bubble sheet | *blank* |
+| 2 | Cover page | first questions |
+| … | questions | questions |
+| last | … | *"This page is intentionally blank"* if needed |
+
+Two pages exist purely so the paper behaves:
+
+- **The blank behind the bubble sheet.** Students tear the scantron off before
+  starting. Without it, page 2 prints on the back of the sheet and leaves with the
+  scantron — and gets scanned alongside their answers. It is deliberately empty; a
+  footer there could interfere with how Gradescope registers the sheet.
+- **The trailing filler**, so every booklet ends on an even page. Booklets vary in
+  length, and without this the *next* student's bubble sheet prints on the back of
+  the previous student's last page. In one 404-student run, 259 booklets were
+  odd-length.
+
+Together these cost one or two sheets per student. Printing single-sided wastes
+them; if you ever need that, say so and the padding can be made conditional.
 
 Stapling each booklet separately is a property of your copier, not of the PDF. A
 copier's "staple each copy" applies to each copy of a repeated document, so a single
 merged file is stapled once. Options, roughly in order of preference:
 
-- **Subset finishing.** Some copiers (Xerox, Ricoh) can staple every *N* pages. This
-  needs every booklet to be the same length, not merely even — ask and I will switch
-  padding from even to uniform.
-- **One job per booklet.** Reliable, but only practical if your print queue accepts
-  finishing options from the command line. Check with
-  `lpoptions -p <printer> -l | grep -i staple`; a queue using a generic PostScript
-  driver exposes no finishing at all, and a release-station workflow applies its
-  settings to the whole released job.
+- **Subset finishing**, if your copier can staple every *N* pages. This needs every
+  booklet to be the same length, not merely even — ask and padding switches from
+  even to uniform.
+- **One job per booklet.** Reliable, but only if the queue accepts finishing options
+  from the command line. Check with `lpoptions -p <printer> -l | grep -i staple`. A
+  queue using a generic PostScript driver exposes no finishing at all, and a
+  release-station workflow (Canon uniFLOW, PaperCut) applies its settings to the
+  whole released job — so this needs a driver that talks to the finisher directly.
 - **Staple by hand.** The bubble sheet makes each boundary obvious at a glance.
 
 ## Deleting things
