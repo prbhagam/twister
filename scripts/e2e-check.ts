@@ -4,6 +4,10 @@
  * the resulting scores by hand.
  *
  * Run: npx tsx scripts/e2e-check.ts [sectionLabel]
+
+ * WRITES to whichever database DATABASE_URL points at (generates a run). Use `npm run
+ * verify`, which points every check at a throwaway verify.db, rather than running
+ * this against a database holding real exams.
  */
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -34,10 +38,14 @@ function check(label: string, ok: boolean, detail = '') {
 }
 
 async function main() {
-  const exam = await prisma.exam.findFirstOrThrow({
-    where: { title: 'Exam 1' },
+  // Any exam that has questions and a roster; not tied to a particular title, so
+  // this works against a freshly seeded verification database.
+  const exam = await prisma.exam.findFirst({
+    where: { questions: { some: {} }, course: { students: { some: {} } } },
     include: { course: { include: { students: true } }, questions: true },
+    orderBy: { createdAt: 'desc' },
   })
+  if (!exam) throw new Error('No exam with questions and a roster. Run: npm run db:seed')
 
   const sections = new Set<string>()
   for (const student of exam.course.students) {
@@ -158,7 +166,9 @@ async function main() {
     const row: (string | number)[] = [
       se.student.firstName,
       se.student.lastName,
-      se.student.gtId ?? '',
+      // Keyed on whichever identifier this student actually has, as a real
+    // Gradescope export would be.
+    se.student.gtId ?? se.student.username ?? se.student.email,
       se.student.email,
       '',
       missing ? 'Missing' : 'Graded',

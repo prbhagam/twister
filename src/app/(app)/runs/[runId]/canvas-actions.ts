@@ -27,6 +27,25 @@ export interface CanvasPushState {
   progressState?: string
 }
 
+/**
+ * Maps every identifier a student might be keyed on to their Canvas user id.
+ *
+ * Both `sis_user_id` and `login_id` are indexed. Keying on SIS id alone leaves the
+ * map empty for a roster synced from a token without SIS access, so no existing
+ * Canvas score is ever found, every push looks like a new grade, and the conflict
+ * warning that stops you overwriting hand-entered grades never fires.
+ */
+function canvasIdIndex(students: { id: number; sis_user_id?: string | null; login_id?: string | null }[]) {
+  const index = new Map<string, number>()
+  for (const user of students) {
+    for (const key of [user.sis_user_id, user.login_id]) {
+      const trimmed = key?.trim()
+      if (trimmed && !index.has(trimmed)) index.set(trimmed, user.id)
+    }
+  }
+  return index
+}
+
 async function resolveTarget(runId: string, assignmentId: string) {
   const client = CanvasClient.fromEnv()
   if (!client) throw new Error('Canvas is not configured. Set CANVAS_BASE_URL and CANVAS_TOKEN.')
@@ -66,11 +85,7 @@ export async function previewCanvasPush(
     ])
 
     const assignment = assignments.find((a) => String(a.id) === assignmentId) ?? null
-    const idByGtId = new Map(
-      students
-        .filter((u) => u.sis_user_id)
-        .map((u) => [String(u.sis_user_id), u.id] as const),
-    )
+    const idByGtId = canvasIdIndex(students)
 
     const plan = planGradePush(rows, submissions, idByGtId)
 
@@ -111,9 +126,7 @@ export async function commitCanvasPush(
       loadScoreRows(runId),
     ])
 
-    const idByGtId = new Map(
-      students.filter((u) => u.sis_user_id).map((u) => [String(u.sis_user_id), u.id] as const),
-    )
+    const idByGtId = canvasIdIndex(students)
     const plan = planGradePush(rows, submissions, idByGtId)
     const grades = gradesToPush(plan)
 

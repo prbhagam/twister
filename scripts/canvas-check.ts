@@ -215,11 +215,22 @@ try {
   check('rejects only the student with no identifier at all', pulled.rejected.length === 1, pulled.rejected[0]?.reason)
   check('imports everyone else', pulled.students.length === canvasUsers.length, `${pulled.students.length} students`)
   check('resolves section names', pulled.sections.every((s) => s.code.startsWith('CS 1301')))
-  check(
-    'every imported student keeps their 9-digit GT ID when Canvas supplies it',
-    pulled.students.every((s) => /^\d{9}$/.test(s.gtId ?? '')),
-    `withGtId=${pulled.withGtId}`,
-  )
+  {
+    // Only the students Canvas actually supplied an SIS id for should carry a GT ID;
+    // the rest legitimately have none. Asserting "all" would just be asserting that
+    // this particular run happened to come from a GT-ID roster.
+    const suppliedGtId = usersWithBadRow.filter((u) => /^\d{9}$/.test(String(u.sis_user_id ?? '')))
+    const keptGtId = pulled.students.filter((s) => /^\d{9}$/.test(s.gtId ?? ''))
+    check(
+      'keeps a 9-digit GT ID for exactly the students Canvas supplied one for',
+      keptGtId.length === suppliedGtId.length && pulled.withGtId === suppliedGtId.length,
+      `${keptGtId.length} kept, ${suppliedGtId.length} supplied`,
+    )
+    check(
+      'every imported student carries at least one identifier',
+      pulled.students.every((s) => s.gtId || s.username),
+    )
+  }
 
   const existingRows = seeded.map((s) => ({
     gtId: s.gtId,
@@ -277,11 +288,26 @@ try {
   console.log('\n3. Grade push dry run')
   const rows = allRows
   const submissions = await client.listSubmissions('123', '777')
-  const idByGtId = new Map(users.filter((u) => u.sis_user_id).map((u) => [String(u.sis_user_id), u.id] as const))
+  // Indexed on both identifiers, mirroring canvasIdIndex() in the app.
+  const idByGtId = new Map<string, number>()
+  for (const u of users) {
+    for (const k of [u.sis_user_id, u.login_id]) {
+      if (k?.trim() && !idByGtId.has(k.trim())) idByGtId.set(k.trim(), u.id)
+    }
+  }
   const plan = planGradePush(rows, submissions, idByGtId)
 
   check('plans a push', plan.totalToPush > 0, `${plan.totalToPush} to push`)
-  check('holds back absentees instead of zeroing them', plan.skippedNotTaken.length > 0, `${plan.skippedNotTaken.length} skipped`)
+  const absentees = allRows.filter((r) => r.status === 'not_taken').length
+  if (absentees > 0) {
+    check(
+      'holds back absentees instead of zeroing them',
+      plan.skippedNotTaken.length === absentees,
+      `${plan.skippedNotTaken.length} of ${absentees} skipped`,
+    )
+  } else {
+    console.log('  – holds back absentees                  skipped (this run has no absentees)')
+  }
   check(
     'flags the differing existing score as a conflict',
     plan.conflicts.length === 1 && plan.conflicts[0]?.existing === 999,
@@ -289,13 +315,24 @@ try {
   )
   check(
     'no absentee leaks into the push payload',
-    !gradesToPush(plan).some((g) => plan.skippedNotTaken.some((s) => s.gtId === g.gtId)),
+    !gradesToPush(plan).some((g) => plan.skippedNotTaken.some((s) => s.gtId === g.key)),
   )
 
   console.log('\n4. Push and progress polling')
-  const started = await client.updateGrades('123', '777', gradesToPush(plan).slice(0, 3))
+  const toPush = gradesToPush(plan).slice(0, 3)
+  const started = await client.updateGrades('123', '777', toPush)
   const decoded = decodeURIComponent(gradePostBody)
-  check('posts grades keyed by sis_user_id', /grade_data\[sis_user_id:\d{9}\]\[posted_grade\]=/.test(decoded))
+  const usesGtId = toPush[0]?.kind === 'sis_user_id'
+  check(
+    `posts grades keyed by ${toPush[0]?.kind}`,
+    usesGtId
+      ? /grade_data\[sis_user_id:\d{9}\]\[posted_grade\]=/.test(decoded)
+      : /grade_data\[sis_login_id:[^\]]+\]\[posted_grade\]=/.test(decoded),
+  )
+  check(
+    'never addresses a username as an SIS user id',
+    usesGtId || !decoded.includes('sis_user_id'),
+  )
   check('does not send Canvas internal ids', !/grade_data\[\d{4}\]/.test(decoded))
   check('receives a Progress object', started.id === 4242 && started.workflow_state === 'queued')
 

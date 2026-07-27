@@ -81,11 +81,49 @@ export interface CanvasSubmission {
   workflow_state: string
 }
 
+/**
+ * How a student is addressed in Canvas's SIS-prefixed id syntax.
+ *   sis_user_id  -> the GT ID  (903000101)
+ *   sis_login_id -> the GT account (mbello3)
+ */
+export type GradeKeyKind = 'sis_user_id' | 'sis_login_id'
+
 export interface CanvasProgress {
   id: number
   workflow_state: 'queued' | 'running' | 'completed' | 'failed'
   completion: number | null
   message?: string | null
+}
+
+/**
+ * Turns a Canvas path into what it was actually trying to do, so a 403 names the
+ * operation rather than "this request". The push touches four endpoints at once and
+ * "permission denied" is useless without knowing which.
+ */
+function describeEndpoint(path: string): string {
+  if (path.endsWith('/submissions')) return 'reading existing grades for this assignment'
+  if (path.includes('/update_grades')) return 'writing grades to this assignment'
+  if (path.endsWith('/assignments')) return 'listing this course’s assignments'
+  if (path.endsWith('/users')) return 'listing this course’s students'
+  if (path.endsWith('/sections')) return 'listing this course’s sections'
+  if (path.startsWith('/progress')) return 'checking the status of the grade upload'
+  if (path === '/courses') return 'listing your courses'
+  return `the request to ${path}`
+}
+
+/** The Canvas permission a 403 on this endpoint usually points at. */
+function permissionHint(path: string): string {
+  if (path.endsWith('/submissions') || path.includes('/update_grades')) {
+    return (
+      'This needs the "Grades - edit" permission in this course. TA roles often have it withheld, ' +
+      'and it is granted per course role, so a token that works in one course can fail in another. ' +
+      'Ask a Canvas admin to grant it, or export the Canvas CSV and upload it through the gradebook instead.'
+    )
+  }
+  if (path.endsWith('/users')) {
+    return 'This needs permission to view the course roster.'
+  }
+  return 'The token may lack permission for this course or endpoint.'
 }
 
 /** `<...>; rel="next"` — Canvas paginates via the Link header, not a body cursor. */
@@ -135,15 +173,16 @@ export class CanvasClient {
     if (!response.ok) {
       // Never echo the response body: Canvas errors can quote the request, and the
       // request carries the token.
+      const endpoint = path.replace(/\?.*$/, '').replace(/^https?:\/\/[^/]+\/api\/v1/, '')
       const hint =
         response.status === 401
           ? 'Canvas rejected the token. Check CANVAS_TOKEN, and that it has not expired or been revoked.'
           : response.status === 403
-            ? 'Canvas refused this request. The token may lack permission for this course or endpoint.'
+            ? `Canvas refused ${describeEndpoint(endpoint)}. ${permissionHint(endpoint)}`
             : response.status === 404
-              ? 'Canvas has no such course, assignment, or endpoint.'
-              : `Canvas returned ${response.status}.`
-      throw new CanvasError(hint, response.status, path.replace(/\?.*$/, ''))
+              ? `Canvas has no such ${endpoint.includes('/assignments/') ? 'assignment' : 'course'} (${endpoint}).`
+              : `Canvas returned ${response.status} for ${endpoint}.`
+      throw new CanvasError(hint, response.status, endpoint)
     }
 
     return response
@@ -204,17 +243,20 @@ export class CanvasClient {
    * Bulk grade update. Asynchronous: Canvas returns a Progress object that must be
    * polled, so a 200 here means "accepted", not "graded".
    *
-   * Keys are `sis_user_id:<gtId>` so the push never depends on Canvas's internal
-   * user ids, which TWISTER does not store.
+   * Students are addressed by SIS identifier so the push never depends on Canvas's
+   * internal user ids, which TWISTER does not store. The *prefix* must match the
+   * kind of identifier: `sis_user_id:` for a GT ID, `sis_login_id:` for a GT
+   * username. Sending a username under `sis_user_id:` is not an error — Canvas
+   * simply matches no one, and the push silently grades nobody.
    */
   async updateGrades(
     courseId: string,
     assignmentId: string,
-    grades: { gtId: string; score: number }[],
+    grades: { key: string; kind: GradeKeyKind; score: number }[],
   ): Promise<CanvasProgress> {
     const body = new URLSearchParams()
-    for (const { gtId, score } of grades) {
-      body.append(`grade_data[sis_user_id:${gtId}][posted_grade]`, String(score))
+    for (const { key, kind, score } of grades) {
+      body.append(`grade_data[${kind}:${key}][posted_grade]`, String(score))
     }
 
     return this.json<CanvasProgress>(

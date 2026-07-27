@@ -13,7 +13,8 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "setup": "prisma db push && playwright install chromium"
+    "setup": "prisma db push && playwright install chromium",
+    "verify": "rm -f verify.db && DATABASE_URL=file:./verify.db prisma db push --url file:./verify.db && DATABASE_URL=file:./verify.db tsx prisma/seed.ts && DATABASE_URL=file:./verify.db tsx scripts/e2e-check.ts HP && DATABASE_URL=file:./verify.db tsx scripts/seed-grading.ts && DATABASE_URL=file:./verify.db tsx scripts/canvas-check.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

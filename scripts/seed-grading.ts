@@ -5,6 +5,10 @@
  * Mirrors the writes that `commitGrading` performs in the app.
  *
  * Run: npx tsx scripts/seed-grading.ts
+
+ * WRITES to whichever database DATABASE_URL points at (writes a grading import). Use `npm run
+ * verify`, which points every check at a throwaway verify.db, rather than running
+ * this against a database holding real exams.
  */
 import 'dotenv/config'
 import Papa from 'papaparse'
@@ -58,7 +62,9 @@ const data = studentExams.map((se, i) => {
   const row: (string | number)[] = [
     se.student.firstName,
     se.student.lastName,
-    se.student.gtId ?? '',
+    // Keyed on whichever identifier this student actually has, as a real
+    // Gradescope export would be.
+    se.student.gtId ?? se.student.username ?? se.student.email,
     se.student.email,
     '',
     missing ? 'Missing' : 'Graded',

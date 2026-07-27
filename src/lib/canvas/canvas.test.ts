@@ -79,7 +79,45 @@ describe('CanvasClient', () => {
     await expect(new CanvasClient(CONFIG, missing).listSections('1')).rejects.toThrow(/no such course/i)
   })
 
-  it('keys bulk grades on sis_user_id, not Canvas ids', async () => {
+  it('names which operation a 403 refused, not just "this request"', async () => {
+    // A score push touches four endpoints at once; "permission denied" is useless
+    // without knowing which one.
+    const forbidden = stubFetch(() => new Response('{}', { status: 403 }))
+    const client = new CanvasClient(CONFIG, forbidden)
+
+    await expect(client.listSubmissions('1', '2')).rejects.toThrow(/reading existing grades/i)
+    await expect(client.listAssignments('1')).rejects.toThrow(/listing this course/i)
+    await expect(client.listStudents('1')).rejects.toThrow(/listing this course’s students/i)
+    await expect(
+      client.updateGrades('1', '2', [{ key: '903000001', kind: 'sis_user_id', score: 1 }]),
+    ).rejects.toThrow(
+      /writing grades/i,
+    )
+  })
+
+  it('points a grades 403 at the specific Canvas permission and the CSV fallback', async () => {
+    const forbidden = stubFetch(() => new Response('{}', { status: 403 }))
+    const message = await new CanvasClient(CONFIG, forbidden)
+      .listSubmissions('1', '2')
+      .catch((e: Error) => e.message)
+
+    expect(message).toMatch(/Grades - edit/)
+    expect(message).toMatch(/TA roles often have it withheld/)
+    expect(message).toMatch(/gradebook/i)
+  })
+
+  it('records the failing endpoint on the error', async () => {
+    const forbidden = stubFetch(() => new Response('{}', { status: 403 }))
+    const error = await new CanvasClient(CONFIG, forbidden)
+      .listSubmissions('1', '2')
+      .catch((e: CanvasError) => e)
+
+    expect(error).toBeInstanceOf(CanvasError)
+    expect((error as CanvasError).path).toBe('/courses/1/assignments/2/submissions')
+    expect((error as CanvasError).status).toBe(403)
+  })
+
+  it('keys bulk grades on SIS identifiers, not Canvas ids', async () => {
     let body = ''
     const fetchImpl = stubFetch((_url, init) => {
       body = String(init?.body)
@@ -87,12 +125,30 @@ describe('CanvasClient', () => {
     })
 
     await new CanvasClient(CONFIG, fetchImpl).updateGrades('1', '2', [
-      { gtId: '903000001', score: 11 },
-      { gtId: '903000002', score: 9.5 },
+      { key: '903000001', kind: 'sis_user_id', score: 11 },
+      { key: '903000002', kind: 'sis_user_id', score: 9.5 },
     ])
 
     expect(decodeURIComponent(body)).toContain('grade_data[sis_user_id:903000001][posted_grade]=11')
     expect(decodeURIComponent(body)).toContain('grade_data[sis_user_id:903000002][posted_grade]=9.5')
+  })
+
+  it('addresses a username under sis_login_id, not sis_user_id', async () => {
+    // Canvas does not error on grade_data[sis_user_id:mbello3] — it matches no one
+    // and the push silently grades nobody, which is the worst possible failure for
+    // a write to student records.
+    let body = ''
+    const fetchImpl = stubFetch((_url, init) => {
+      body = String(init?.body)
+      return jsonResponse({ id: 77, workflow_state: 'queued', completion: 0 })
+    })
+
+    await new CanvasClient(CONFIG, fetchImpl).updateGrades('1', '2', [
+      { key: 'mbello3', kind: 'sis_login_id', score: 8 },
+    ])
+
+    expect(decodeURIComponent(body)).toContain('grade_data[sis_login_id:mbello3][posted_grade]=8')
+    expect(decodeURIComponent(body)).not.toContain('sis_user_id')
   })
 
   it('polls a Progress object until it completes', async () => {
@@ -456,7 +512,20 @@ describe('planGradePush', () => {
 
     const plan = planGradePush([row], [submission(42, null)], new Map([['nabbott3', 42]]))
     expect(plan.skippedNoGtId).toHaveLength(0)
-    expect(gradesToPush(plan)).toEqual([{ gtId: 'nabbott3', score: 9 }])
+    // Addressed as a login id, because it is one.
+    expect(gradesToPush(plan)).toEqual([{ key: 'nabbott3', kind: 'sis_login_id', score: 9 }])
+  })
+
+  it('tags GT-ID students as sis_user_id and username students as sis_login_id', () => {
+    const withGtId = scoreRow({ gtId: '903000001', earned: 5 })
+    const withUsername = scoreRow({ gtId: '903000002', earned: 6 })
+    withUsername.student.gtId = null
+    withUsername.student.username = 'mbello3'
+
+    const plan = planGradePush([withGtId, withUsername], [], new Map())
+    const kinds = Object.fromEntries(gradesToPush(plan).map((g) => [g.key, g.kind]))
+    expect(kinds['903000001']).toBe('sis_user_id')
+    expect(kinds['mbello3']).toBe('sis_login_id')
   })
 
   it('orders the plan by last name so it can be read against a roster', () => {
@@ -483,8 +552,8 @@ describe('planGradePush', () => {
       ids,
     )
     expect(gradesToPush(plan)).toEqual([
-      { gtId: '903000001', score: 10 },
-      { gtId: '903000003', score: 12 },
+      { key: '903000001', kind: 'sis_user_id', score: 10 },
+      { key: '903000003', kind: 'sis_user_id', score: 12 },
     ])
   })
 })

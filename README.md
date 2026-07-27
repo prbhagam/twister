@@ -149,6 +149,18 @@ Run `npx tsx scripts/canvas-identity-check.ts <canvasCourseId>` to see which
 identifiers your token can actually read. It prints counts and uniqueness only, with
 redacted samples, so it is safe to paste into a ticket.
 
+### When Canvas refuses the score push
+
+Reading and writing grades needs the **Grades - edit** permission, granted per course
+role. TA roles commonly have it withheld, so a token that works in a course you teach
+can be refused in one you TA. Errors name the endpoint that was refused rather than
+saying "permission denied", and
+`npx tsx scripts/canvas-permission-check.ts <courseId> <assignmentId>` probes each
+endpoint separately so you can see exactly what is allowed.
+
+The push is never required: the **Canvas gradebook (CSV)** download on the run page
+uploads through Canvas → Grades → Import and needs no API permission at all.
+
 ### Token handling
 
 A Canvas personal access token cannot be scoped: it carries the full permissions of
@@ -178,14 +190,17 @@ seed — enough to identify a stray page and recover its layout.
 
 | Command | What it does |
 |---|---|
+| `npm run verify` | Full end-to-end verification against a throwaway `verify.db`. Never touches your real database. |
 | `npm test` | Unit tests against the synthetic fixtures in `src/lib/__fixtures__/`. If real files are present in `assets/`, extra checks run against them too; otherwise those are skipped. |
 | `npm run db:seed` | Loads a 12-question demo exam and the sample roster |
-| `npx tsx scripts/e2e-check.ts HP` | Generates one section, verifies the PDFs, then grades a synthesized export with known errors injected and checks the scores |
+| `npx tsx scripts/e2e-check.ts HP` | ⚠ writes to `DATABASE_URL` — prefer `npm run verify`. |
+| _(the check scripts below all write to `DATABASE_URL`)_ | Generates one section, verifies the PDFs, then grades a synthesized export with known errors injected and checks the scores |
 | `npx tsx scripts/preview-exam.ts` | Renders two sample exams without touching the database |
 | `npx tsx scripts/preview-bubble-sheet.ts` | Renders stamped bubble sheets for checking field placement |
 | `npx tsx scripts/full-run.ts` | Generates the entire seeded class, for timing |
 | `npx tsx scripts/seed-grading.ts` | Writes a synthetic grading import against the newest run |
 | `npx tsx scripts/canvas-identity-check.ts <courseId>` | Reports which student identifiers your Canvas token can read |
+| `npx tsx scripts/canvas-permission-check.ts <courseId> [assignmentId]` | Probes each Canvas endpoint separately and reports which your token may call. Read-only. |
 | `npx tsx scripts/canvas-check.ts` | Drives the Canvas client against a local stand-in for the Canvas API over real HTTP — pagination, bearer auth, grade-push encoding, Progress polling. Needs a graded run. |
 
 ## Notes and limits

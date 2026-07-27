@@ -76,7 +76,15 @@ export function CanvasPush({
 
       {preview.error ? (
         <Notice tone="red" title="Cannot push">
-          {preview.error}
+          <p className="mt-1">{preview.error}</p>
+          <p className="mt-2">
+            You can still get these scores into Canvas without any API permission:
+            download{' '}
+            <a href={`/api/runs/${runId}/canvas.csv`} className="font-medium underline">
+              Canvas gradebook (CSV)
+            </a>{' '}
+            and upload it via Canvas → Grades → Import.
+          </p>
         </Notice>
       ) : null}
 

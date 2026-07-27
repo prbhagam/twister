@@ -1,9 +1,11 @@
-import type { CanvasSubmission } from './client'
+import type { CanvasSubmission, GradeKeyKind } from './client'
 import type { ScoreRow } from '../export'
 import { byLastName } from '../roster'
 
 export interface GradeChange {
   gtId: string
+  /** Which Canvas id syntax addresses this student; see GradeKeyKind. */
+  keyKind: GradeKeyKind
   name: string
   score: number
   possible: number
@@ -58,8 +60,11 @@ export function planGradePush(
       continue
     }
     // Match on GT ID when present, else the username: a Canvas token without SIS
-    // permission can still identify students by login id.
-    const key = /^\d{9}$/.test(row.student.gtId ?? '') ? row.student.gtId! : row.student.username
+    // permission can still identify students by login id. The two are addressed by
+    // different Canvas prefixes, so which one was used has to travel with the key.
+    const hasGtId = /^\d{9}$/.test(row.student.gtId ?? '')
+    const key = hasGtId ? row.student.gtId! : row.student.username
+    const keyKind: GradeKeyKind = hasGtId ? 'sis_user_id' : 'sis_login_id'
     if (!key) {
       skippedNoGtId.push({ gtId: row.student.gtId ?? '', name })
       continue
@@ -69,6 +74,7 @@ export function planGradePush(
     const existing = userId === undefined ? null : (existingByUserId.get(userId) ?? null)
     const entry: GradeChange = {
       gtId: key,
+      keyKind,
       name,
       score: row.earned,
       possible: row.possible,
@@ -91,8 +97,14 @@ export function planGradePush(
 }
 
 /** The rows a confirmed push actually sends: new scores plus accepted overwrites. */
-export function gradesToPush(plan: GradePushPlan): { gtId: string; score: number }[] {
-  return [...plan.changes, ...plan.conflicts].map(({ gtId, score }) => ({ gtId, score }))
+export function gradesToPush(
+  plan: GradePushPlan,
+): { key: string; kind: GradeKeyKind; score: number }[] {
+  return [...plan.changes, ...plan.conflicts].map(({ gtId, keyKind, score }) => ({
+    key: gtId,
+    kind: keyKind,
+    score,
+  }))
 }
 
 /** Warns about anything that would make a Canvas import behave unexpectedly. */
