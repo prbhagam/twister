@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+output/
+*.db
+*.db-journal
+*.db.backup*
+*.sqlite
+.env
+.DS_Store
+src/generated/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Student PII. Rosters and Gradescope exports are FERPA-protected education
+# records and must never be committed — the app reads them from disk at runtime.
+assets/*.csv

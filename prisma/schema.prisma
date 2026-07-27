@@ -1,0 +1,307 @@
+// TWISTER — Tests Written Individually via Seeded, Traceable Exam Randomization
+//
+// Two halves that must never be confused:
+//   * Authoring side (Course/Exam/Question/Variation/Choice) — live, editable.
+//   * Run side (GenerationRun/RunQuestion/RunVariation/RunChoice/StudentExam) — a
+//     frozen deep copy taken at generation time. Grading reads ONLY the run side, so
+//     editing a question after printing can never desync the key from the paper in a
+//     student's hand.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Prisma 7: the connection URL lives in prisma.config.ts, not here.
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+// ---------------------------------------------------------------- authoring side
+
+model Course {
+  id             String   @id @default(cuid())
+  name           String // "CS 1301"
+  title          String? // "Introduction to Computing"
+  term           String?
+  canvasCourseId String?
+  createdAt      DateTime @default(now())
+
+  exams         Exam[]
+  students      Student[]
+  rosterImports RosterImport[]
+}
+
+model Exam {
+  id             String   @id @default(cuid())
+  courseId       String
+  title          String
+  instructorSeed String
+  instructions   String? // markdown, printed on the cover page
+  // Canvas assignment this exam's scores get pushed to. Only the id is stored —
+  // the API token lives in server environment and never touches the database.
+  canvasAssignmentId String?
+  // Which student identifier seeds the randomization and gets stamped into the
+  // bubble sheet's ID box: "gtId" or "username". This MUST match whatever
+  // Gradescope matches its roster on, or no scanned sheet will auto-match.
+  // Changing it changes every student's exam, so it is snapshotted per run.
+  identityField      String  @default("gtId")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  course    Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  questions Question[]
+  runs      GenerationRun[]
+
+  @@index([courseId])
+}
+
+model Question {
+  id        String   @id @default(cuid())
+  examId    String
+  order     Int
+  title     String? // internal label for your own navigation; never printed
+  points    Float    @default(1)
+  createdAt DateTime @default(now())
+
+  exam       Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  variations Variation[]
+
+  @@index([examId, order])
+}
+
+model Variation {
+  id             String @id @default(cuid())
+  questionId     String
+  order          Int
+  label          String
+  promptMarkdown String
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  choices  Choice[]
+
+  @@index([questionId, order])
+}
+
+model Choice {
+  id           String  @id @default(cuid())
+  variationId  String
+  order        Int
+  textMarkdown String
+  isCorrect    Boolean @default(false)
+  // "None of the above" / "All of the above": held out of the shuffle and appended last.
+  pinToLast    Boolean @default(false)
+
+  variation Variation @relation(fields: [variationId], references: [id], onDelete: Cascade)
+
+  @@index([variationId, order])
+}
+
+// ------------------------------------------------------------------- roster side
+
+model RosterImport {
+  id        String   @id @default(cuid())
+  courseId  String
+  filename  String
+  imported  Int      @default(0)
+  skipped   Int      @default(0)
+  skipDetail String  @default("{}") // JSON: counts by role that were excluded
+  createdAt DateTime @default(now())
+
+  course   Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  students Student[]
+}
+
+model Student {
+  id        String   @id @default(cuid())
+  courseId  String
+  importId  String?
+  // Both identifiers are stored; which one seeds and gets stamped on the bubble
+  // sheet is Exam.identityField. Either may be absent depending on the source:
+  // a Canvas token without SIS permission yields no gtId, and a roster CSV
+  // without a GT Account column yields no username.
+  gtId      String?
+  username  String?
+  firstName String
+  lastName  String
+  email     String
+  sections  String   @default("[]") // JSON array of normalized section codes
+  role      String   @default("Student")
+  createdAt DateTime @default(now())
+
+  course       Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  import       RosterImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  studentExams StudentExam[]
+
+  @@unique([courseId, gtId])
+  @@unique([courseId, username])
+  @@index([courseId, lastName])
+}
+
+// ---------------------------------------------------------------------- run side
+
+model GenerationRun {
+  id             String    @id @default(cuid())
+  examId         String
+  label          String?
+  seedUsed       String // snapshot of exam.instructorSeed at run time
+  identityField  String    @default("gtId") // snapshot of exam.identityField
+  sections       String    @default("[]") // JSON array; empty means all sections
+  status         String    @default("pending") // pending | running | completed | failed
+  error          String?
+  studentCount   Int       @default(0)
+  completedCount Int       @default(0)
+  outputDir      String    @default("")
+  // Cover-page content snapshotted so a renamed course/exam never rewrites history.
+  examTitle      String    @default("")
+  courseName     String    @default("")
+  instructions   String?
+  createdAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  exam         Exam            @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questions    RunQuestion[]
+  studentExams StudentExam[]
+  imports      GradingImport[]
+
+  @@index([examId])
+}
+
+model RunQuestion {
+  id               String @id @default(cuid())
+  runId            String
+  sourceQuestionId String
+  order            Int
+  title            String?
+  points           Float
+
+  run        GenerationRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  variations RunVariation[]
+
+  @@index([runId, order])
+}
+
+model RunVariation {
+  id                String @id @default(cuid())
+  runQuestionId     String
+  sourceVariationId String
+  order             Int
+  label             String
+  promptMarkdown    String
+  // Markdown is rendered once per run rather than once per student: 36 prompts
+  // instead of ~4,800 renders for a 404-student, 12-question exam.
+  promptHtml        String
+
+  runQuestion RunQuestion @relation(fields: [runQuestionId], references: [id], onDelete: Cascade)
+  choices     RunChoice[]
+
+  @@index([runQuestionId, order])
+}
+
+model RunChoice {
+  id             String  @id @default(cuid())
+  runVariationId String
+  sourceChoiceId String
+  order          Int
+  textMarkdown   String
+  textHtml       String
+  isCorrect      Boolean
+  pinToLast      Boolean
+
+  runVariation RunVariation @relation(fields: [runVariationId], references: [id], onDelete: Cascade)
+
+  @@index([runVariationId, order])
+}
+
+model StudentExam {
+  id        String   @id @default(cuid())
+  runId     String
+  studentId String
+  traceCode String
+  // JSON ExamLayout: ordered [{ position, runQuestionId, runVariationId,
+  // choiceOrder: [runChoiceId...], correctLetter, choiceCount, points }].
+  // This is the authoritative answer key — grading is a pure lookup against it.
+  layout    String
+  pdfPath   String?
+  pageCount Int?
+  createdAt DateTime @default(now())
+
+  run       GenerationRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  student   Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  results   StudentResult[]
+  overrides Override[]
+
+  @@unique([runId, studentId])
+  @@index([runId])
+}
+
+// ------------------------------------------------------------------ grading side
+
+model GradingImport {
+  id        String   @id @default(cuid())
+  runId     String
+  filename  String
+  matched   Int      @default(0)
+  // JSON: { csvOnly: [{id,name}], rosterOnly: [{id,name}], missingStatus: n }
+  unmatched String   @default("{}")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  run     GenerationRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  results StudentResult[]
+
+  @@index([runId])
+}
+
+model StudentResult {
+  id            String @id @default(cuid())
+  importId      String
+  studentExamId String
+  status        String // graded | not_taken | excused
+  earned        Float  @default(0)
+  possible      Float  @default(0)
+
+  import      GradingImport    @relation(fields: [importId], references: [id], onDelete: Cascade)
+  studentExam StudentExam      @relation(fields: [studentExamId], references: [id], onDelete: Cascade)
+  questions   QuestionResult[]
+
+  @@unique([importId, studentExamId])
+  @@index([importId])
+}
+
+model QuestionResult {
+  id          String @id @default(cuid())
+  resultId    String
+  position    Int
+  rawResponse String
+  letters     String @default("[]") // JSON array of parsed letters
+  verdict     String // correct | incorrect | blank | multi | out_of_range
+  awarded     Float
+  possible    Float
+
+  result StudentResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+
+  @@index([resultId, position])
+}
+
+// Keyed to StudentExam rather than to an import, so a manual override survives
+// re-importing a corrected Gradescope CSV.
+model Override {
+  id            String   @id @default(cuid())
+  studentExamId String
+  position      Int
+  awarded       Float
+  note          String?
+  createdAt     DateTime @default(now())
+
+  studentExam StudentExam @relation(fields: [studentExamId], references: [id], onDelete: Cascade)
+
+  @@unique([studentExamId, position])
+}

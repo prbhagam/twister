@@ -1,0 +1,55 @@
+{
+  "name": "twister",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seed.ts",
+    "setup": "prisma db push && playwright install chromium"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.9.0",
+    "@prisma/client": "^7.9.0",
+    "@shikijs/rehype": "^4.3.1",
+    "dotenv": "^17.4.2",
+    "katex": "^0.16.19",
+    "next": "^16.2.12",
+    "papaparse": "^5.4.1",
+    "pdf-lib": "^1.17.1",
+    "playwright": "^1.62.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "rehype-katex": "^7.0.1",
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "^4.0.0",
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.1",
+    "shiki": "^4.3.1",
+    "unified": "^11.0.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.10.7",
+    "@types/papaparse": "^5.3.15",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "prisma": "^7.9.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.10"
+  }
+}

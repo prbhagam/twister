@@ -1,0 +1,5 @@
+First Name,Last Name,Student ID,Email,Sections,Status,Submission ID,Max Points,Total Score,Question 1 Score,Question 1 Weight,Question 1 Student Response(s),Question 1 Correct Response,Question 2 Score,Question 2 Weight,Question 2 Student Response(s),Question 2 Correct Response,Question 3 Score,Question 3 Weight,Question 3 Student Response(s),Question 3 Correct Response
+Nadia,Abbott,903000001,nabbott3@example.edu,202699/CS/1301/O1/10001,Graded,411000001,3.0,2.0,1.0,1.0,C,A,0.0,1.0,A;B,B,1.0,1.0,,C
+Marc Antoine,Bello,903000002,mbello3@example.edu,"",Missing,--,--,--
+Wei,Marchetti,903000003,wmarchetti3@example.edu,202699/CS/1301/QH/10002,Graded,411000003,3.0,3.0,1.0,1.0,A,A,1.0,1.0,B,B,1.0,1.0,c,C
+Unenrolled,Visitor,909999999,visitor3@example.edu,"",Graded,411000009,3.0,1.0,1.0,1.0,E,A,0.0,1.0,D,B,0.0,1.0,D,C
