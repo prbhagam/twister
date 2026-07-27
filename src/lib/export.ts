@@ -134,20 +134,24 @@ export function scoresCsv(rows: ScoreRow[]): string {
  * Canvas gradebook import shape. Canvas matches on SIS User ID and ignores the
  * placeholder rows it normally round-trips, so only the identity columns and the
  * single assignment column are emitted.
+ *
+ * Students with no scanned sheet carry MISSING_MARK here, matching the scores
+ * export, at the instructor's instruction. Canvas's own gradebook import accepts
+ * numeric grades and `EX`; a non-numeric value like `MI` may be rejected or
+ * ignored on import, so the preflight says so.
  */
 export function canvasCsv(rows: ScoreRow[], assignmentName: string): string {
   const fields = ['Student', 'ID', 'SIS User ID', 'SIS Login ID', 'Section', assignmentName]
   const data = rows
     .slice()
     .sort((a, b) => byLastName(a.student, b.student))
-    .filter((r) => r.status !== 'not_taken')
     .map((row) => [
       `${row.student.lastName}, ${row.student.firstName}`,
       '',
       row.student.gtId ?? '',
       row.student.username ?? row.student.email.split('@')[0],
       row.student.sections[0] ?? '',
-      row.earned,
+      row.status === 'not_taken' ? MISSING_MARK : row.earned,
     ])
   return Papa.unparse({ fields, data })
 }
@@ -171,12 +175,10 @@ export function canvasPreflight(rows: ScoreRow[]): string[] {
 
   const notTaken = rows.filter((r) => r.status === 'not_taken')
   if (notTaken.length) {
-    // The scores export records M for these students. Canvas cannot accept M in a
-    // grade cell, so this one file leaves them out rather than inventing a number.
     problems.push(
-      `${notTaken.length} student(s) have no scanned sheet. They are recorded as ${MISSING_MARK} in the scores export. ` +
-        `This Canvas file leaves them blank instead, because Canvas cannot accept ${MISSING_MARK} as a grade — ` +
-        `mark them excused or zero in Canvas yourself.`,
+      `${notTaken.length} student(s) have no scanned sheet and are exported as ${MISSING_MARK}. ` +
+        `Canvas's gradebook import expects a number or EX, so it may reject or ignore ` +
+        `${MISSING_MARK} — try a two-row file before importing the whole class.`,
     )
   }
 

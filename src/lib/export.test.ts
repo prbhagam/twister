@@ -39,7 +39,7 @@ function row(overrides: Partial<ScoreRow> & { lastName: string }): ScoreRow {
 const parse = (csv: string) => Papa.parse<Record<string, string>>(csv, { header: true }).data
 
 describe('scoresCsv', () => {
-  it('records M rather than 0 for a student with no scanned sheet', () => {
+  it('records the missing mark rather than 0 for a student with no scanned sheet', () => {
     // A zero asserts they sat the exam and got everything wrong. That is a
     // different claim from being absent, and only the instructor should make it.
     const rows = parse(
@@ -59,8 +59,8 @@ describe('scoresCsv', () => {
     expect(present['Percent']).toBe('66.7')
   })
 
-  it('marks every question column M for a missing student, not blank', () => {
-    // Blank reads as "no data for this question"; M says the whole sheet is absent.
+  it('marks every question column with the missing mark, not blank', () => {
+    // Blank reads as "no data for this question"; the mark says the sheet is absent.
     // A graded student is included because the question columns only exist when
     // somebody in the run actually answered something.
     const rows = parse(
@@ -101,14 +101,12 @@ describe('scoresCsv', () => {
 })
 
 describe('canvasPreflight', () => {
-  it('does not claim missing students are simply omitted', () => {
-    // They are recorded as M in the scores export; only the Canvas file leaves
-    // them out, and saying otherwise contradicts what the exports actually do.
+  it('warns that Canvas may not accept the missing mark', () => {
     const [message] = canvasPreflight([
       row({ lastName: 'Absent', status: 'not_taken', earned: 0, questions: [] }),
     ])
-    expect(message).toContain(`recorded as ${MISSING_MARK} in the scores export`)
-    expect(message).toContain('Canvas cannot accept')
+    expect(message).toContain(MISSING_MARK)
+    expect(message).toMatch(/reject or ignore/)
     expect(message).not.toMatch(/omitted rather than being given a zero/)
   })
 
@@ -118,20 +116,39 @@ describe('canvasPreflight', () => {
 })
 
 describe('canvasCsv', () => {
-  it('omits missing students entirely rather than sending M', () => {
-    // Canvas would reject "M" as a grade; an absent student is left for the
-    // instructor to mark excused or zero by hand.
-    const csv = canvasCsv(
-      [
-        row({ lastName: 'Absent', status: 'not_taken', earned: 0, questions: [] }),
-        row({ lastName: 'Present' }),
-      ],
-      'Exam 1',
+  it('includes missing students, marked with the missing mark', () => {
+    const rows = parse(
+      canvasCsv(
+        [
+          row({ lastName: 'Absent', status: 'not_taken', earned: 0, questions: [] }),
+          row({ lastName: 'Present' }),
+        ],
+        'Exam 1',
+      ),
     )
-    const rows = parse(csv)
-    expect(rows.map((r) => r['Student'])).toEqual(['Present, Test'])
-    // Checked against the grade cells rather than the whole file: a substring search
-    // would also match any student whose name happens to contain those letters.
-    expect(rows.map((r) => r['Exam 1'])).not.toContain(MISSING_MARK)
+    expect(rows.map((r) => r['Student'])).toEqual(['Absent, Test', 'Present, Test'])
+    // Read from the grade cell rather than searching the whole file, which would
+    // also match any student whose name contains those letters.
+    expect(rows.find((r) => r['Student'] === 'Absent, Test')!['Exam 1']).toBe(MISSING_MARK)
+    expect(rows.find((r) => r['Student'] === 'Present, Test')!['Exam 1']).toBe('2')
+  })
+
+  it('agrees with the scores export on who is missing', () => {
+    const input = [
+      row({ lastName: 'Absent', status: 'not_taken', earned: 0, questions: [] }),
+      row({ lastName: 'Present' }),
+    ]
+    const canvasMarks = new Map(
+      parse(canvasCsv(input, 'Exam 1')).map((r) => [r['Student'].split(',')[0], r['Exam 1']]),
+    )
+    const scoreMarks = new Map(parse(scoresCsv(input)).map((r) => [r['Last Name'], r['Score']]))
+    for (const name of ['Absent', 'Present']) {
+      expect(canvasMarks.get(name)).toBe(scoreMarks.get(name))
+    }
+  })
+
+  it('matches students on SIS User ID', () => {
+    const rows = parse(canvasCsv([row({ lastName: 'Present' })], 'Exam 1'))
+    expect(rows[0]['SIS User ID']).toBe('903000101')
   })
 })
