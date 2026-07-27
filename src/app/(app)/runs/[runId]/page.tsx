@@ -10,6 +10,7 @@ import { Badge, Button, Card, CardHeader, Empty, Notice } from '@/components/ui'
 import { DangerZone } from '@/components/DangerZone'
 import { deleteRun } from '../../actions'
 import { retryRun } from './actions'
+import { CanvasExport } from './CanvasExport'
 import { GradingPanel } from './GradingPanel'
 import { RunProgress } from './RunProgress'
 import { CanvasSync } from './CanvasSync'
@@ -219,10 +220,9 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
                     title="Scores (CSV)"
                     note="Alphabetical by last name"
                   />
-                  <DownloadLink
-                    href={`/api/runs/${run.id}/canvas.csv`}
-                    title="Canvas gradebook (CSV)"
-                    note="Import via the Canvas gradebook"
+                  <CanvasExport
+                    runId={run.id}
+                    missingCount={rows.filter((r) => r.status === 'not_taken').length}
                   />
                 </>
               ) : null}

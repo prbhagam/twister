@@ -184,9 +184,15 @@ Download **Canvas gradebook (CSV)** from the run page and upload it via Canvas �
 Grades → Import. It matches students on SIS User ID and needs no API access, so it
 works whatever your Canvas role permits.
 
-Students with no scanned sheet appear there too, marked `MI`, matching the scores
-export. Canvas's own import expects a number or `EX`, so it may reject or ignore a
-non-numeric grade — import a two-row file first to see how your Canvas handles it.
+By default every student appears, and one with no scanned sheet carries `MI`, matching
+the scores export. Canvas's own import expects a number or `EX`, so it may reject or
+ignore a non-numeric grade — import a two-row file first to see how your Canvas
+handles it.
+
+**Only students with submissions** on the run page drops those students from the file
+instead. Canvas leaves a student's grade untouched when they are absent from the
+import, so use this when you have already excused or scored them by hand and do not
+want the import to overwrite that.
 
 ## Choosing the student identifier
 

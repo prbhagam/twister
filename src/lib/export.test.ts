@@ -147,6 +147,62 @@ describe('canvasCsv', () => {
     }
   })
 
+  it('omits students with no submission when submittedOnly is set', () => {
+    // Canvas leaves a student's existing grade alone if they are absent from the
+    // file, which is the point: it avoids overwriting one set by hand.
+    const rows = parse(
+      canvasCsv(
+        [
+          row({ lastName: 'Absent', status: 'not_taken', earned: 0, questions: [] }),
+          row({ lastName: 'Present' }),
+        ],
+        'Exam 1',
+        { submittedOnly: true },
+      ),
+    )
+    expect(rows.map((r) => r['Student'])).toEqual(['Present, Test'])
+  })
+
+  it('includes everyone by default, so the option has to be asked for', () => {
+    const rows = parse(
+      canvasCsv(
+        [
+          row({ lastName: 'Absent', status: 'not_taken', earned: 0, questions: [] }),
+          row({ lastName: 'Present' }),
+        ],
+        'Exam 1',
+      ),
+    )
+    expect(rows).toHaveLength(2)
+    expect(rows.find((r) => r['Student'] === 'Absent, Test')!['Exam 1']).toBe(MISSING_MARK)
+  })
+
+  it('still emits a header when every student is filtered out', () => {
+    // An empty file would be silently useless; a header-only file is obviously so.
+    const csv = canvasCsv(
+      [row({ lastName: 'Absent', status: 'not_taken', earned: 0, questions: [] })],
+      'Exam 1',
+      { submittedOnly: true },
+    )
+    expect(csv.split('\n')[0]).toContain('SIS User ID')
+    // Asserted on the file rather than through the parser, which reports a phantom
+    // empty row for a header-only document.
+    expect(csv.split('\n').filter((l) => l.trim())).toHaveLength(1)
+  })
+
+  it('does not change the grades of students who did submit', () => {
+    const input = [
+      row({ lastName: 'Absent', status: 'not_taken', earned: 0, questions: [] }),
+      row({ lastName: 'Present', earned: 41 }),
+    ]
+    const withAll = parse(canvasCsv(input, 'Exam 1'))
+    const withOnly = parse(canvasCsv(input, 'Exam 1', { submittedOnly: true }))
+    const grade = (rs: Record<string, string>[]) =>
+      rs.find((r) => r['Student'] === 'Present, Test')!['Exam 1']
+    expect(grade(withOnly)).toBe(grade(withAll))
+    expect(grade(withOnly)).toBe('41')
+  })
+
   it('matches students on SIS User ID', () => {
     const rows = parse(canvasCsv([row({ lastName: 'Present' })], 'Exam 1'))
     expect(rows[0]['SIS User ID']).toBe('903000101')

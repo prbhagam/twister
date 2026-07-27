@@ -140,11 +140,28 @@ export function scoresCsv(rows: ScoreRow[]): string {
  * numeric grades and `EX`; a non-numeric value like `MI` may be rejected or
  * ignored on import, so the preflight says so.
  */
-export function canvasCsv(rows: ScoreRow[], assignmentName: string): string {
+export interface CanvasCsvOptions {
+  /**
+   * Leave out students with no scanned sheet entirely, rather than marking them.
+   *
+   * Off by default: every student appears, and one with no submission carries
+   * MISSING_MARK. Turn it on when you only want to touch the students who sat the
+   * exam — Canvas leaves a student's existing grade alone if they are not in the
+   * file, so omitting is how you avoid overwriting a grade you set by hand.
+   */
+  submittedOnly?: boolean
+}
+
+export function canvasCsv(
+  rows: ScoreRow[],
+  assignmentName: string,
+  options: CanvasCsvOptions = {},
+): string {
   const fields = ['Student', 'ID', 'SIS User ID', 'SIS Login ID', 'Section', assignmentName]
   const data = rows
     .slice()
     .sort((a, b) => byLastName(a.student, b.student))
+    .filter((row) => !options.submittedOnly || row.status !== 'not_taken')
     .map((row) => [
       `${row.student.lastName}, ${row.student.firstName}`,
       '',
