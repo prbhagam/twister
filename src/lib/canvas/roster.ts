@@ -1,10 +1,12 @@
 import type { CanvasSection, CanvasUser } from './client'
-import type { IdentityField } from '../identity'
 import type { ParsedStudent } from '../roster'
 import { splitName } from '../roster'
 
 export interface CanvasRosterResult {
   students: ParsedStudent[]
+  /** How many imported students carry each identifier — drives the exam's choice. */
+  withGtId: number
+  withUsername: number
   sections: { code: string; label: string; count: number }[]
   /** Rows Canvas returned that could not be used. Never silently dropped. */
   rejected: { name: string; canvasId: number; reason: string }[]
@@ -16,23 +18,21 @@ const GT_ID = /^\d{9}$/
 /**
  * Converts a Canvas roster into the same shape the CSV importer produces.
  *
- * The critical rule: a student is only usable if Canvas supplies the identifier the
- * exam is actually seeded from. Substituting Canvas's internal user id would hand
- * the same student a *different paper* than the CSV path would, and a regeneration
- * after a lost printout would not match the bubble sheet they already filled in.
+ * Stores whatever identifiers Canvas returns — `sis_user_id` (the GT ID, visible
+ * only when the token's role may read SIS data) and `login_id` (the GT username,
+ * usually visible without it) — and rejects only a student who has neither.
  *
- * Which identifier that is depends on `identityField`:
- *   - "gtId"     requires `sis_user_id`, which Canvas returns only when the token's
- *                role may read SIS identifiers;
- *   - "username" requires `login_id`, which is usually visible without SIS access.
+ * Canvas's own internal user id is never used as a fallback. Exams are seeded from
+ * the identifier, so substituting it would hand a student a different paper than
+ * the CSV path produces, and a regeneration after a lost printout would not match
+ * the sheet they already filled in.
  *
- * The other identifier is still stored when present — it costs nothing and keeps
- * grading able to match an export keyed either way.
+ * Whether the exam can actually be generated is decided later, by
+ * studentsMissingIdentity() against the exam's chosen identity.
  */
 export function fromCanvasRoster(
   users: CanvasUser[],
   sections: CanvasSection[],
-  identityField: IdentityField = 'gtId',
 ): CanvasRosterResult {
   const sectionNames = new Map(sections.map((s) => [s.id, s.name]))
   const students: ParsedStudent[] = []
@@ -44,32 +44,28 @@ export function fromCanvasRoster(
   for (const user of users) {
     const sisId = (user.sis_user_id ?? '').trim()
     const username = (user.login_id ?? '').trim()
+    const gtId = GT_ID.test(sisId) ? sisId : null
 
-    // Only the identifier actually being seeded from is mandatory.
-    const identity = identityField === 'username' ? username : sisId
-    if (!identity) {
+    // Import is deliberately permissive: store whatever identifiers Canvas gives
+    // and reject only a student with none at all. Which identifier an exam is
+    // actually seeded from is an exam-level decision, enforced before generation
+    // by studentsMissingIdentity() — checking it here would block the import on a
+    // question the roster step has no business asking.
+    if (!gtId && !username) {
       rejected.push({
         name: user.name,
         canvasId: user.id,
-        reason:
-          identityField === 'username'
-            ? 'Canvas did not return a login ID (GT username) for this student.'
-            : 'Canvas did not return an SIS ID (GT ID) for this student.',
+        reason: sisId
+          ? `Canvas returned SIS ID "${sisId}", which is not a 9-digit GT ID, and no login ID.`
+          : 'Canvas returned neither an SIS ID (GT ID) nor a login ID (GT username) for this student.',
       })
       continue
     }
-    if (identityField === 'gtId' && !GT_ID.test(sisId)) {
-      rejected.push({
-        name: user.name,
-        canvasId: user.id,
-        reason: `SIS ID "${sisId}" is not a 9-digit GT ID.`,
-      })
-      continue
-    }
+
+    // Dedupe on whichever identifier is present; both are unique per course.
+    const identity = gtId ?? username
     if (seen.has(identity)) {
-      errors.push(
-        `Canvas returned ${identityField === 'username' ? 'username' : 'GT ID'} ${identity} ("${user.name}") more than once; kept the first.`,
-      )
+      errors.push(`Canvas returned ${identity} ("${user.name}") more than once; kept the first.`)
       continue
     }
     seen.add(identity)
@@ -90,8 +86,8 @@ export function fromCanvasRoster(
     for (const code of codes) sectionCounts.set(code, (sectionCounts.get(code) ?? 0) + 1)
 
     students.push({
-      // Both are kept when available, whichever one is doing the seeding.
-      gtId: GT_ID.test(sisId) ? sisId : null,
+      // Both are kept when available, whichever one ends up doing the seeding.
+      gtId,
       username: username || null,
       firstName,
       lastName,
@@ -103,20 +99,36 @@ export function fromCanvasRoster(
     })
   }
 
-  if (students.length === 0 && rejected.length > 0) {
+  const withGtId = students.filter((s) => s.gtId).length
+  const withUsername = students.filter((s) => s.username).length
+
+  if (students.length === 0) {
     errors.push(
-      identityField === 'username'
-        ? 'No student had a usable GT username. The Canvas token lacks permission to read login IDs — ' +
-          'ask a Canvas admin to grant it, or import the roster by CSV instead.'
-        : 'No student had a usable GT ID. The Canvas token most likely lacks permission to read SIS IDs — ' +
-          'ask a Canvas admin to grant it, import the roster by CSV, or switch the exam to seed on ' +
-          'usernames instead. Importing without a stable identifier would produce exams that cannot ' +
-          'be reproduced.',
+      users.length === 0
+        ? 'Canvas returned no active students for this course.'
+        : 'Canvas returned no usable identifier for any student — neither an SIS ID (GT ID) nor a ' +
+          'login ID (GT username). Ask a Canvas admin to grant the token SIS read access, or import ' +
+          'the roster by CSV instead.',
+    )
+  } else if (withGtId === 0) {
+    // The common case: SIS access is withheld but login IDs come through. Say so
+    // plainly, because it decides which identifier the exam must be seeded on.
+    errors.push(
+      `Canvas returned no GT IDs (the token lacks SIS read access), but did return usernames for ` +
+        `${withUsername} of ${students.length} students. This roster can only be used by an exam set ` +
+        `to seed on "GT username" — set that on the exam page before generating.`,
+    )
+  } else if (withGtId < students.length) {
+    errors.push(
+      `${students.length - withGtId} student(s) have no GT ID. An exam seeded on GT ID will refuse ` +
+        `to generate until that is resolved; one seeded on usernames is unaffected.`,
     )
   }
 
   return {
     students,
+    withGtId,
+    withUsername,
     sections: [...sectionCounts]
       .map(([code, count]) => ({ code, label: code, count }))
       .sort((a, b) => a.code.localeCompare(b.code)),
@@ -138,6 +150,19 @@ export interface RosterDiff {
  * will do before it does it. Drops matter: a student who withdrew should not get a
  * printed exam, but one who already sat an exam must not be deleted either.
  */
+type Identifiable = {
+  gtId?: string | null
+  username?: string | null
+  email?: string | null
+}
+
+/** Every identifier a row can be recognised by, lowercased. */
+function keysOf(s: Identifiable): string[] {
+  return [s.gtId, s.username, s.email]
+    .map((v) => v?.trim().toLowerCase())
+    .filter((v): v is string => Boolean(v))
+}
+
 export function diffRoster(
   existing: {
     gtId?: string | null
@@ -148,26 +173,29 @@ export function diffRoster(
     sections: string[]
   }[],
   incoming: ParsedStudent[],
-  identityField: IdentityField = 'gtId',
 ): RosterDiff {
-  // Compared on the identity actually in use, so a sync run under one identity
-  // does not report the whole roster as added.
-  const key = (s: { gtId?: string | null; username?: string | null }) =>
-    (identityField === 'username' ? s.username : s.gtId) ?? ''
-  const before = new Map(existing.filter((s) => key(s)).map((s) => [key(s), s]))
-  const after = new Map(incoming.filter((s) => key(s)).map((s) => [key(s), s]))
+  // Matched on *any* shared identifier rather than one designated field: a roster
+  // imported from CSV carries GT IDs while a Canvas pull may carry only usernames,
+  // and keying on one of them would report the entire class as added and dropped.
+  const index = new Map<string, (typeof existing)[number]>()
+  for (const s of existing) for (const k of keysOf(s)) if (!index.has(k)) index.set(k, s)
 
-  const added = incoming.filter((s) => key(s) && !before.has(key(s)))
-  const removed = existing
-    .filter((s) => key(s) && !after.has(key(s)))
-    .map((s) => ({ gtId: key(s), firstName: s.firstName, lastName: s.lastName }))
+  const find = (s: Identifiable) => keysOf(s).map((k) => index.get(k)).find(Boolean)
+  const matchedExisting = new Set<(typeof existing)[number]>()
 
+  const added: ParsedStudent[] = []
   const changed: RosterDiff['changed'] = []
   let unchanged = 0
 
+  const label = (s: Identifiable) => s.gtId ?? s.username ?? s.email ?? ''
+
   for (const student of incoming) {
-    const previous = before.get(key(student))
-    if (!previous) continue
+    const previous = find(student)
+    if (!previous) {
+      added.push(student)
+      continue
+    }
+    matchedExisting.add(previous)
 
     const fields: [string, string, string][] = [
       ['first name', previous.firstName, student.firstName],
@@ -178,8 +206,12 @@ export function diffRoster(
     const diffs = fields.filter(([, from, to]) => from !== to)
 
     if (diffs.length === 0) unchanged++
-    else for (const [field, from, to] of diffs) changed.push({ gtId: key(student), field, from, to })
+    else for (const [field, from, to] of diffs) changed.push({ gtId: label(student), field, from, to })
   }
+
+  const removed = existing
+    .filter((s) => !matchedExisting.has(s))
+    .map((s) => ({ gtId: label(s), firstName: s.firstName, lastName: s.lastName }))
 
   return { added, removed, changed, unchanged }
 }

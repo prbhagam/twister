@@ -123,9 +123,14 @@ Both identifiers are stored whenever available, and grading matches an export ke
 on either one plus email — so a roster imported one way still grades against an
 export keyed the other. Only the *stamped* value has to be right.
 
-Whichever identity is in use, the importer **rejects** any student who lacks it and
-tells you why, rather than falling back to something unstable. Seeding on a blank
-value would give every affected student the same paper.
+Roster import is permissive: it stores whatever identifiers the source supplies and
+rejects only a student who has none at all. The strict check happens at generation,
+which refuses to start if any student lacks the identity that exam seeds from and
+names them. Canvas's own internal user id is never used as a fallback — seeding on
+it would produce exams that cannot be reproduced.
+
+If your Canvas token cannot read SIS data, the sync says so explicitly and reports
+how many usernames it did get, so you know to set the exam to *GT username*.
 
 Run `npx tsx scripts/canvas-identity-check.ts <canvasCourseId>` to see which
 identifiers your token can actually read. It prints counts and uniqueness only, with

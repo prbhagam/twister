@@ -159,37 +159,50 @@ describe('fromCanvasRoster', () => {
     expect(result.rejected).toEqual([])
   })
 
-  it('REJECTS a student with no SIS id rather than seeding on the Canvas id', () => {
-    // This is the whole point of the check: substituting Canvas's internal id would
-    // give this student a different paper than the CSV path produces, and a
-    // regenerated exam would not match the sheet they already filled in.
+  it('still imports a student when Canvas withholds SIS IDs but returns login IDs', () => {
+    // The real-world case: the token cannot read SIS data. Blocking the import here
+    // would ask an exam-level question at roster time; the exam decides later which
+    // identifier it seeds from, and refuses to generate if it is missing.
     const result = fromCanvasRoster([user({ id: 1, sis_user_id: null })], SECTIONS)
-    expect(result.students).toHaveLength(0)
-    expect(result.rejected[0].reason).toMatch(/did not return an SIS ID/i)
+    expect(result.students).toHaveLength(1)
+    expect(result.students[0]).toMatchObject({ gtId: null, username: 'nabbott3' })
+    expect(result.rejected).toHaveLength(0)
   })
 
-  it('rejects an SIS id that is not a 9-digit GT ID', () => {
-    const result = fromCanvasRoster([user({ id: 1, sis_user_id: 'abc' })], SECTIONS)
-    expect(result.students).toHaveLength(0)
-    expect(result.rejected[0].reason).toMatch(/not a 9-digit GT ID/)
-  })
-
-  it('explains the likely cause when no student has a usable id', () => {
+  it('says plainly that a roster with no GT IDs requires a username-seeded exam', () => {
     const result = fromCanvasRoster(
-      [user({ id: 1, sis_user_id: null }), user({ id: 2, sis_user_id: null })],
+      [user({ id: 1, sis_user_id: null }), user({ id: 2, sis_user_id: null, login_id: 'mbello3' })],
       SECTIONS,
     )
-    expect(result.errors[0]).toMatch(/lacks permission to read SIS IDs/i)
-    expect(result.errors[0]).toMatch(/cannot be reproduced/i)
+    expect(result.withGtId).toBe(0)
+    expect(result.withUsername).toBe(2)
+    expect(result.errors[0]).toMatch(/no GT IDs/i)
+    expect(result.errors[0]).toMatch(/seed on "GT username"/i)
   })
 
-  it('keeps good students even when others are rejected', () => {
+  it('does not store a malformed SIS id as a GT ID', () => {
+    const result = fromCanvasRoster([user({ id: 1, sis_user_id: 'abc' })], SECTIONS)
+    expect(result.students[0].gtId).toBeNull()
+    expect(result.students[0].username).toBe('nabbott3')
+  })
+
+  it('rejects only a student with neither identifier', () => {
     const result = fromCanvasRoster(
-      [user({ id: 1 }), user({ id: 2, name: 'No Id', sis_user_id: null })],
+      [user({ id: 1 }), user({ id: 2, name: 'No Id', sis_user_id: null, login_id: null })],
       SECTIONS,
     )
     expect(result.students).toHaveLength(1)
     expect(result.rejected).toHaveLength(1)
+    expect(result.rejected[0].reason).toMatch(/neither an SIS ID .* nor a login ID/i)
+  })
+
+  it('flags a partially-identified roster, which is the worst case', () => {
+    const result = fromCanvasRoster(
+      [user({ id: 1 }), user({ id: 2, sis_user_id: null, login_id: 'mbello3' })],
+      SECTIONS,
+    )
+    expect(result.withGtId).toBe(1)
+    expect(result.errors[0]).toMatch(/1 student\(s\) have no GT ID/)
   })
 
   it('resolves section names and counts them', () => {
@@ -282,6 +295,29 @@ describe('diffRoster', () => {
   it('reports nothing when the roster is identical', () => {
     const diff = diffRoster(existing, existing.map((s) => ({ ...s, role: 'Student' })))
     expect(diff).toMatchObject({ added: [], removed: [], changed: [], unchanged: 2 })
+  })
+
+  it('matches a username-only Canvas pull against a GT-ID roster', () => {
+    // Otherwise a course imported by CSV and then synced from a token without SIS
+    // access would report the entire class as both added and dropped.
+    const canvasOnlyUsernames = existing.map((s) => ({
+      ...s,
+      gtId: null,
+      role: 'Student',
+    }))
+    const diff = diffRoster(existing, canvasOnlyUsernames)
+    expect(diff.added).toEqual([])
+    expect(diff.removed).toEqual([])
+    expect(diff.unchanged).toBe(2)
+  })
+
+  it('falls back to email when neither id is shared', () => {
+    const byEmailOnly = [
+      { gtId: null, username: null, firstName: 'Nadia', lastName: 'Abbott', email: 'a@x.edu', sections: ['O1'], role: 'Student' },
+    ]
+    const diff = diffRoster([existing[0]], byEmailOnly)
+    expect(diff.added).toEqual([])
+    expect(diff.unchanged).toBe(1)
   })
 })
 

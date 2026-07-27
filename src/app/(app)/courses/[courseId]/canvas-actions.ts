@@ -2,7 +2,6 @@
 
 import { revalidatePath } from 'next/cache'
 import { CanvasClient, diffRoster, fromCanvasRoster } from '@/lib/canvas'
-import { parseIdentityField, type IdentityField } from '@/lib/identity'
 import { prisma } from '@/lib/db'
 
 /**
@@ -26,13 +25,7 @@ export interface CanvasSyncState {
   applied?: { added: number; updated: number; kept: number }
 }
 
-/** The identity any exam in this course seeds from; they must agree. */
-async function courseIdentityField(courseId: string): Promise<IdentityField> {
-  const exam = await prisma.exam.findFirst({ where: { courseId }, orderBy: { createdAt: 'desc' } })
-  return parseIdentityField(exam?.identityField)
-}
-
-async function pullRoster(canvasCourseId: string, identityField: IdentityField) {
+async function pullRoster(canvasCourseId: string) {
   const client = CanvasClient.fromEnv()
   if (!client) throw new Error('Canvas is not configured. Set CANVAS_BASE_URL and CANVAS_TOKEN.')
 
@@ -40,7 +33,7 @@ async function pullRoster(canvasCourseId: string, identityField: IdentityField) 
     client.listStudents(canvasCourseId),
     client.listSections(canvasCourseId),
   ])
-  return fromCanvasRoster(users, sections, identityField)
+  return fromCanvasRoster(users, sections)
 }
 
 export async function previewCanvasSync(
@@ -51,11 +44,9 @@ export async function previewCanvasSync(
   const canvasCourseId = String(formData.get('canvasCourseId') ?? '').trim()
   if (!canvasCourseId) return { error: 'Choose a Canvas course first.' }
 
-  const identityField = await courseIdentityField(courseId)
-
   let pulled: Awaited<ReturnType<typeof pullRoster>>
   try {
-    pulled = await pullRoster(canvasCourseId, identityField)
+    pulled = await pullRoster(canvasCourseId)
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) }
   }
@@ -75,14 +66,13 @@ export async function previewCanvasSync(
       sections: JSON.parse(s.sections) as string[],
     })),
     pulled.students,
-    identityField,
   )
 
   return {
     ok: true,
     canvasCourseId,
     added: diff.added.map((s) => ({
-      gtId: (identityField === 'username' ? s.username : s.gtId) ?? '',
+      gtId: s.gtId ?? s.username ?? '',
       name: `${s.lastName}, ${s.firstName}`,
       sections: s.sections,
     })),
@@ -102,11 +92,9 @@ export async function commitCanvasSync(
   const canvasCourseId = String(formData.get('canvasCourseId') ?? '').trim()
   if (!canvasCourseId) return { error: 'Nothing to sync — run the preview again.' }
 
-  const identityField = await courseIdentityField(courseId)
-
   let pulled: Awaited<ReturnType<typeof pullRoster>>
   try {
-    pulled = await pullRoster(canvasCourseId, identityField)
+    pulled = await pullRoster(canvasCourseId)
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) }
   }
@@ -128,12 +116,14 @@ export async function commitCanvasSync(
   for (const student of pulled.students) {
     // Upserting on the identity in use keeps each student's row id stable, so exams
     // already generated for them keep pointing at the right person.
-    const where =
-      identityField === 'username' && student.username
+    // Prefer the GT ID as the upsert key when present, else the username. Either
+    // keeps the student's row id stable, so exams already generated for them keep
+    // pointing at the right person.
+    const where = student.gtId
+      ? { courseId_gtId: { courseId, gtId: student.gtId } }
+      : student.username
         ? { courseId_username: { courseId, username: student.username } }
-        : student.gtId
-          ? { courseId_gtId: { courseId, gtId: student.gtId } }
-          : null
+        : null
     if (!where) continue
 
     await prisma.student.upsert({

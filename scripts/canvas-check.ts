@@ -71,10 +71,10 @@ const usersWithBadRow = [
   ...canvasUsers,
   {
     id: 8888,
-    name: 'No Sis Id',
-    sortable_name: 'Id, No Sis',
+    name: 'No Identifiers',
+    sortable_name: 'Identifiers, No',
     sis_user_id: null,
-    login_id: 'nosis3',
+    login_id: null,
     email: 'nosis3@gatech.edu',
     enrollments: [{ course_section_id: 10, type: 'StudentEnrollment', enrollment_state: 'active' }],
   },
@@ -175,23 +175,60 @@ try {
   check('paginates the roster correctly', users.length === usersWithBadRow.length, `${users.length} users`)
 
   const pulled = fromCanvasRoster(users, sections)
-  check('rejects the student with no SIS id', pulled.rejected.length === 1, pulled.rejected[0]?.reason)
-  check('imports the rest', pulled.students.length === canvasUsers.length, `${pulled.students.length} students`)
+  check('rejects only the student with no identifier at all', pulled.rejected.length === 1, pulled.rejected[0]?.reason)
+  check('imports everyone else', pulled.students.length === canvasUsers.length, `${pulled.students.length} students`)
   check('resolves section names', pulled.sections.every((s) => s.code.startsWith('CS 1301')))
   check(
-    'every imported student keeps a 9-digit GT ID',
+    'every imported student keeps their 9-digit GT ID when Canvas supplies it',
     pulled.students.every((s) => /^\d{9}$/.test(s.gtId ?? '')),
+    `withGtId=${pulled.withGtId}`,
   )
 
-  console.log('\n2. Roster diff against the database')
-  const existing = seeded.map((s) => ({
+  const existingRows = seeded.map((s) => ({
     gtId: s.gtId,
+    username: s.username,
     firstName: s.firstName,
     lastName: s.lastName,
     email: s.email,
     sections: JSON.parse(s.sections) as string[],
   }))
-  const diff = diffRoster(existing, pulled.students)
+
+  console.log('\n1b. A token with no SIS access (the real-world case)')
+  // Same roster with every sis_user_id withheld, as Canvas returns it when the
+  // token's role cannot read SIS data.
+  const noSis = users.map((u) => ({ ...u, sis_user_id: null }))
+  const withoutSis = fromCanvasRoster(noSis, sections)
+  check(
+    'still imports every student who has a login ID',
+    withoutSis.students.length === pulled.students.length,
+    `${withoutSis.students.length} students`,
+  )
+  check('records no GT IDs', withoutSis.withGtId === 0)
+  check('records usernames instead', withoutSis.withUsername === withoutSis.students.length)
+  check(
+    'tells the operator to seed the exam on usernames',
+    /seed on "GT username"/.test(withoutSis.errors[0] ?? ''),
+  )
+  {
+    // The roster in the database was imported from CSV and carries GT IDs; this
+    // pull carries only usernames. Matching on any shared identifier means the
+    // overlap is recognised instead of the whole class reading as added+dropped.
+    const d = diffRoster(existingRows, withoutSis.students)
+    const withGtIdPull = diffRoster(existingRows, pulled.students)
+    check(
+      'a username-only pull matches the same students as a GT-ID pull',
+      d.added.length === withGtIdPull.added.length && d.removed.length === withGtIdPull.removed.length,
+      `added ${d.added.length} vs ${withGtIdPull.added.length}, removed ${d.removed.length} vs ${withGtIdPull.removed.length}`,
+    )
+    check(
+      'the overlap is recognised rather than reported as a wholesale replacement',
+      d.unchanged + d.changed.length > 0 && d.added.length === 1,
+      `${d.unchanged} unchanged, ${d.changed.length} changed, ${d.added.length} added`,
+    )
+  }
+
+  console.log('\n2. Roster diff against the database')
+  const diff = diffRoster(existingRows, pulled.students)
   check('detects the late add', diff.added.length === 1 && diff.added[0].gtId === '903999999')
   check(
     'detects the drops',
