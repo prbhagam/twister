@@ -69,6 +69,16 @@ loads a demo exam plus a roster, first drop your own export at
    question-by-question comparison of the key against what they marked. Export scores
    alphabetically by last name, or as a Canvas gradebook import.
 
+## Deleting things
+
+Courses, exams, and generation runs can each be deleted from their own page. Deletes
+cascade — a course takes its roster, every exam, every run, all grades, and the
+generated PDFs on disk with it — so each one requires typing the course name, the
+exam title, or the word `delete` before the button becomes active. There is no undo.
+
+Deleting a run makes any paper already printed from it ungradable: the answer keys
+live in that run.
+
 ## Scoring rules
 
 | Situation | Result |
@@ -88,6 +98,9 @@ student's exam, not the import, so re-importing a corrected CSV does not wipe th
 Optional. Set `CANVAS_BASE_URL` and `CANVAS_TOKEN` (a personal access token from
 Canvas → Account → Settings) and two things light up. Leave them blank and
 everything still works through CSV import/export.
+
+Courses you **teach, TA, or design** all appear in the picker; the role is shown
+beside the term so a course you support is distinguishable from one you run.
 
 **Roster sync.** Link the course to a Canvas course, then pull the live roster —
 which picks up students who added or dropped since your last import, the failure

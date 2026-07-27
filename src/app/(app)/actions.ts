@@ -20,8 +20,47 @@ export async function createCourse(formData: FormData) {
   redirect(`/courses/${course.id}`)
 }
 
+/**
+ * Removes the generated PDFs for a set of runs.
+ *
+ * Database rows cascade, but the PDFs are files on disk and would otherwise be
+ * orphaned — a full class is ~90 MB per run.
+ */
+async function removeRunOutput(runIds: string[]) {
+  const { rm } = await import('node:fs/promises')
+  const { runDir } = await import('@/lib/generation')
+
+  await Promise.all(
+    runIds.map((id) =>
+      rm(runDir(id), { recursive: true, force: true }).catch((error) => {
+        // A missing or unreadable directory must not block the delete; the rows are
+        // already gone and leaving files behind is recoverable, a half-delete is not.
+        console.error(`[twister] could not remove output for run ${id}:`, error)
+      }),
+    ),
+  )
+}
+
+/**
+ * Deletes a course and everything under it: exams, questions, roster, generation
+ * runs, grades, and the PDFs on disk. Irreversible, so the UI requires the course
+ * name to be typed before this is reachable.
+ */
 export async function deleteCourse(formData: FormData) {
-  await prisma.course.delete({ where: { id: String(formData.get('courseId')) } })
+  const courseId = String(formData.get('courseId'))
+  const confirmation = String(formData.get('confirm') ?? '').trim()
+
+  const course = await prisma.course.findUniqueOrThrow({
+    where: { id: courseId },
+    include: { exams: { include: { runs: { select: { id: true } } } } },
+  })
+  if (confirmation !== course.name) return
+
+  const runIds = course.exams.flatMap((exam) => exam.runs.map((run) => run.id))
+  await prisma.course.delete({ where: { id: courseId } })
+  await removeRunOutput(runIds)
+
+  revalidatePath('/')
   redirect('/')
 }
 
@@ -42,9 +81,39 @@ export async function createExam(formData: FormData) {
   redirect(`/exams/${exam.id}`)
 }
 
+/**
+ * Deletes an exam and everything under it: questions, generation runs, grades, and
+ * the PDFs on disk. The roster is untouched — it belongs to the course.
+ */
 export async function deleteExam(formData: FormData) {
-  const exam = await prisma.exam.delete({ where: { id: String(formData.get('examId')) } })
+  const examId = String(formData.get('examId'))
+  const confirmation = String(formData.get('confirm') ?? '').trim()
+
+  const exam = await prisma.exam.findUniqueOrThrow({
+    where: { id: examId },
+    include: { runs: { select: { id: true } } },
+  })
+  if (confirmation !== exam.title) return
+
+  const runIds = exam.runs.map((run) => run.id)
+  await prisma.exam.delete({ where: { id: examId } })
+  await removeRunOutput(runIds)
+
+  revalidatePath(`/courses/${exam.courseId}`)
   redirect(`/courses/${exam.courseId}`)
+}
+
+/** Deletes a single generation run: its layouts, grades, and PDFs. */
+export async function deleteRun(formData: FormData) {
+  const runId = String(formData.get('runId'))
+  const confirmation = String(formData.get('confirm') ?? '').trim()
+  if (confirmation !== 'delete') return
+
+  const run = await prisma.generationRun.delete({ where: { id: runId } })
+  await removeRunOutput([runId])
+
+  revalidatePath(`/exams/${run.examId}`)
+  redirect(`/exams/${run.examId}`)
 }
 
 export async function updateExam(formData: FormData) {

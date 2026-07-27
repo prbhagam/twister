@@ -46,6 +46,24 @@ export interface CanvasCourse {
   name: string
   course_code?: string
   term?: { name?: string }
+  /** The current user's own enrolments in this course. */
+  enrollments?: { type: string; role?: string; enrollment_state?: string }[]
+}
+
+/**
+ * Roles that imply running a course rather than taking it. TA is included
+ * deliberately: head TAs routinely administer exams, and filtering to `teacher`
+ * alone silently hides every course they support.
+ */
+const STAFF_ENROLLMENTS = new Set(['teacher', 'ta', 'designer'])
+
+export function staffRoleFor(course: CanvasCourse): string | null {
+  const roles = (course.enrollments ?? [])
+    .filter((e) => STAFF_ENROLLMENTS.has(e.type))
+    .map((e) => e.type)
+  if (roles.length === 0) return null
+  // Prefer the most privileged label when someone holds several.
+  return ['teacher', 'designer', 'ta'].find((r) => roles.includes(r)) ?? roles[0]
 }
 
 export interface CanvasAssignment {
@@ -148,11 +166,18 @@ export class CanvasClient {
     return (await (await this.request(path, init)).json()) as T
   }
 
-  /** Courses the token holder teaches — used to populate the course picker. */
-  listCourses(): Promise<CanvasCourse[]> {
-    return this.paginate<CanvasCourse>(
-      '/courses?enrollment_type=teacher&enrollment_state=active&include[]=term&per_page=100',
+  /**
+   * Courses the token holder helps run — teacher, TA, or designer.
+   *
+   * Canvas's `enrollment_type` filter takes a single role, so filtering server-side
+   * would mean one request per role. Instead every active course is fetched once
+   * and filtered on the enrolments Canvas already returns.
+   */
+  async listCourses(): Promise<CanvasCourse[]> {
+    const courses = await this.paginate<CanvasCourse>(
+      '/courses?enrollment_state=active&include[]=term&per_page=100',
     )
+    return courses.filter((c) => staffRoleFor(c) !== null)
   }
 
   listSections(courseId: string): Promise<CanvasSection[]> {

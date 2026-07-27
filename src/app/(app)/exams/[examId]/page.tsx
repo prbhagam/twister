@@ -7,7 +7,8 @@ import { toPlainSummary } from '@/lib/markdown'
 import { sectionLabel } from '@/lib/roster'
 import { distinctExamCount, formatBig } from '@/lib/seed'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label, LinkButton, Notice, Textarea } from '@/components/ui'
-import { updateExam } from '../../actions'
+import { DangerZone } from '@/components/DangerZone'
+import { deleteExam, updateExam } from '../../actions'
 import { addQuestion, moveQuestion } from './actions'
 import { CsvImport } from './CsvImport'
 import { GeneratePanel } from './GeneratePanel'
@@ -300,6 +301,22 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
                 Save settings
               </Button>
             </form>
+          </Card>
+
+          <Card className="p-5">
+            <h2 className="mb-1 text-sm font-semibold text-red-800">Delete exam</h2>
+            <p className="mb-3 text-xs text-slate-500">
+              The course roster is not affected.
+            </p>
+            <DangerZone
+              action={deleteExam}
+              hiddenFields={{ examId: exam.id }}
+              label="Delete this exam"
+              description={`This permanently deletes "${exam.title}": ${exam.questions.length} question(s), ${exam.runs.length} generation run(s) with their grades, and all generated PDFs. This cannot be undone.`}
+              confirmHint="To confirm, type the exam title:"
+              confirmWord={exam.title}
+              buttonText="Delete exam permanently"
+            />
           </Card>
         </div>
       </div>

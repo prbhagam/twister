@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CanvasClient, CanvasError, type CanvasSubmission, type CanvasUser } from './client'
+import {
+  CanvasClient,
+  CanvasError,
+  staffRoleFor,
+  type CanvasSubmission,
+  type CanvasUser,
+} from './client'
 import { gradePushWarnings, gradesToPush, planGradePush } from './grades'
 import { diffRoster, fromCanvasRoster } from './roster'
 import type { ScoreRow } from '../export'
@@ -112,6 +118,32 @@ describe('CanvasClient', () => {
     ).rejects.toThrow(/still processing/i)
   })
 
+  it('includes courses you TA, not only ones you teach', async () => {
+    // enrollment_type=teacher silently hides every course a head TA supports, which
+    // is most of them.
+    const fetchImpl = stubFetch(() =>
+      jsonResponse([
+        { id: 1, name: 'Taught', enrollments: [{ type: 'teacher' }] },
+        { id: 2, name: 'TAed', enrollments: [{ type: 'ta' }] },
+        { id: 3, name: 'Designed', enrollments: [{ type: 'designer' }] },
+        { id: 4, name: 'Enrolled as a student', enrollments: [{ type: 'student' }] },
+        { id: 5, name: 'Observing', enrollments: [{ type: 'observer' }] },
+      ]),
+    )
+
+    const courses = await new CanvasClient(CONFIG, fetchImpl).listCourses()
+    expect(courses.map((c) => c.id)).toEqual([1, 2, 3])
+  })
+
+  it('does not filter by enrollment_type server-side', async () => {
+    // Canvas takes a single role there, so filtering server-side would need one
+    // request per role.
+    const fetchImpl = stubFetch(() => jsonResponse([]))
+    await new CanvasClient(CONFIG, fetchImpl).listCourses()
+    const [url] = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(String(url)).not.toContain('enrollment_type')
+  })
+
   it('is not configured when the environment is missing', () => {
     const saved = { url: process.env.CANVAS_BASE_URL, token: process.env.CANVAS_TOKEN }
     delete process.env.CANVAS_BASE_URL
@@ -120,6 +152,25 @@ describe('CanvasClient', () => {
     expect(CanvasClient.isConfigured()).toBe(false)
     if (saved.url) process.env.CANVAS_BASE_URL = saved.url
     if (saved.token) process.env.CANVAS_TOKEN = saved.token
+  })
+})
+
+describe('staffRoleFor', () => {
+  it('reports the staff role', () => {
+    expect(staffRoleFor({ id: 1, name: 'x', enrollments: [{ type: 'ta' }] })).toBe('ta')
+    expect(staffRoleFor({ id: 1, name: 'x', enrollments: [{ type: 'teacher' }] })).toBe('teacher')
+  })
+
+  it('prefers the most privileged role when someone holds several', () => {
+    expect(
+      staffRoleFor({ id: 1, name: 'x', enrollments: [{ type: 'ta' }, { type: 'teacher' }] }),
+    ).toBe('teacher')
+  })
+
+  it('returns null for a course you only take or observe', () => {
+    expect(staffRoleFor({ id: 1, name: 'x', enrollments: [{ type: 'student' }] })).toBeNull()
+    expect(staffRoleFor({ id: 1, name: 'x', enrollments: [] })).toBeNull()
+    expect(staffRoleFor({ id: 1, name: 'x' })).toBeNull()
   })
 })
 

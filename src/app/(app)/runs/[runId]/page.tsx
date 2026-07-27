@@ -8,6 +8,8 @@ import { sectionLabel } from '@/lib/roster'
 import { loadScoreRows } from '@/lib/run-data'
 import { byLastName } from '@/lib/roster'
 import { Badge, Button, Card, CardHeader, Empty, Notice } from '@/components/ui'
+import { DangerZone } from '@/components/DangerZone'
+import { deleteRun } from '../../actions'
 import { retryRun } from './actions'
 import { GradingPanel } from './GradingPanel'
 import { RunProgress } from './RunProgress'
@@ -71,7 +73,10 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
     where: { runId },
     include: { student: true },
   })
-  const examIdByGtId = new Map(studentExams.map((se) => [se.student.gtId, se.id]))
+  // Keyed on whichever identifier the student has; gtId may be absent.
+  const examIdByStudent = new Map(
+    studentExams.map((se) => [se.student.gtId ?? se.student.username ?? se.student.email, se.id]),
+  )
 
   const average =
     graded.length > 0
@@ -181,12 +186,13 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {sortedRows.map((row) => {
-                      const studentExamId = examIdByGtId.get(row.student.gtId)
+                      const studentKey = row.student.gtId ?? row.student.username ?? row.student.email
+                      const studentExamId = examIdByStudent.get(studentKey)
                       const flags = row.questions.filter(
                         (q) => FLAGGED.includes(q.verdict) && !q.overridden,
                       ).length
                       return (
-                        <tr key={row.student.gtId} className="hover:bg-slate-50">
+                        <tr key={studentKey} className="hover:bg-slate-50">
                           <td className="px-5 py-1.5">
                             {studentExamId ? (
                               <Link
@@ -200,7 +206,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
                             )}
                           </td>
                           <td className="px-3 py-1.5 font-mono text-xs text-slate-500">
-                            {row.student.gtId}
+                            {row.student.gtId ?? row.student.username ?? '—'}
                           </td>
                           <td className="px-3 py-1.5 font-mono text-xs text-slate-400">
                             {row.student.traceCode}
@@ -270,6 +276,22 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
               </ul>
             </Notice>
           ) : null}
+
+          <Card className="p-5">
+            <h2 className="mb-1 text-sm font-semibold text-red-800">Delete run</h2>
+            <p className="mb-3 text-xs text-slate-500">
+              The exam and its questions are not affected.
+            </p>
+            <DangerZone
+              action={deleteRun}
+              hiddenFields={{ runId: run.id }}
+              label="Delete this run"
+              description={`This permanently deletes this run: ${run._count.studentExams} student exam(s), their answer keys, any imported grades, and the generated PDFs. Papers already printed from it will no longer be gradable.`}
+              confirmHint="To confirm, type:"
+              confirmWord="delete"
+              buttonText="Delete run permanently"
+            />
+          </Card>
 
           <Card className="px-5 py-4 text-xs text-slate-600">
             <p className="font-medium text-slate-900">This run is frozen.</p>

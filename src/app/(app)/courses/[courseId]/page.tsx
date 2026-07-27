@@ -3,8 +3,9 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { sectionLabel } from '@/lib/roster'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label } from '@/components/ui'
-import { CanvasClient } from '@/lib/canvas'
-import { createExam } from '../../actions'
+import { CanvasClient, staffRoleFor } from '@/lib/canvas'
+import { DangerZone } from '@/components/DangerZone'
+import { createExam, deleteCourse } from '../../actions'
 import { CanvasSync } from './CanvasSync'
 import { RosterUpload } from './RosterUpload'
 
@@ -24,7 +25,10 @@ async function loadCanvasCourses() {
       courses: courses.map((c) => ({
         id: String(c.id),
         name: c.course_code ? `${c.course_code} — ${c.name}` : c.name,
-        term: c.term?.name,
+        // Shown so a course you TA is distinguishable from one you teach.
+        term: [c.term?.name, staffRoleFor(c) === 'ta' ? 'TA' : staffRoleFor(c) === 'designer' ? 'Designer' : null]
+          .filter(Boolean)
+          .join(' · '),
       })),
       error: null,
     }
@@ -154,7 +158,9 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
                           <td className="px-5 py-1.5">
                             {student.lastName}, {student.firstName}
                           </td>
-                          <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{student.gtId}</td>
+                          <td className="px-3 py-1.5 font-mono text-xs text-slate-500">
+                            {student.gtId ?? student.username ?? "—"}
+                          </td>
                           <td className="px-5 py-1.5 text-right text-xs text-slate-400">
                             {(JSON.parse(student.sections) as string[]).map(sectionLabel).join(', ')}
                           </td>
@@ -168,6 +174,7 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
           </Card>
         </div>
 
+        <div className="space-y-6">
         <Card className="h-fit p-5">
           <h2 className="mb-3 text-sm font-semibold">New exam</h2>
           <form action={createExam} className="space-y-3">
@@ -184,6 +191,23 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
             A random instructor seed is assigned automatically; you can change it on the exam page.
           </p>
         </Card>
+
+        <Card className="p-5">
+          <h2 className="mb-1 text-sm font-semibold text-red-800">Delete course</h2>
+          <p className="mb-3 text-xs text-slate-500">
+            Removes this course and everything under it.
+          </p>
+          <DangerZone
+            action={deleteCourse}
+            hiddenFields={{ courseId: course.id }}
+            label="Delete this course"
+            description={`This permanently deletes ${course.name}: ${course.students.length} students, ${course.exams.length} exam(s), every generation run and grade, and all generated PDFs. This cannot be undone.`}
+            confirmHint="To confirm, type the course name:"
+            confirmWord={course.name}
+            buttonText="Delete course permanently"
+          />
+        </Card>
+        </div>
       </div>
     </div>
   )

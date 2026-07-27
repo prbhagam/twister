@@ -23,16 +23,35 @@ function check(label: string, ok: boolean, detail = '') {
 }
 
 // Build the stand-in roster from real seeded students, so the diff is meaningful.
-// Must be a *graded* run: an ungraded one reports every student as not_taken, which
-// would make the push checks vacuously pass.
-const run = await prisma.generationRun.findFirst({
+//
+// Picks the run with the most *graded* students rather than the newest one. A run
+// where everyone is not_taken — which is what importing the sample Gradescope
+// export produces, since it contains exactly one graded row — would make the push
+// checks pass vacuously.
+const candidates = await prisma.generationRun.findMany({
   where: { imports: { some: { isActive: true } } },
   orderBy: { createdAt: 'desc' },
 })
-if (!run) {
-  console.error('No graded run found. Run: npx tsx scripts/seed-grading.ts')
+
+let run: (typeof candidates)[number] | null = null
+let bestGraded = 0
+for (const candidate of candidates) {
+  const graded = await prisma.studentResult.count({
+    where: { status: 'graded', import: { runId: candidate.id, isActive: true } },
+  })
+  if (graded > bestGraded) {
+    bestGraded = graded
+    run = candidate
+  }
+}
+
+if (!run || bestGraded < 2) {
+  console.error(
+    `No run has at least 2 graded students (best: ${bestGraded}). Run: npx tsx scripts/seed-grading.ts`,
+  )
   process.exit(1)
 }
+console.log(`Using run ${run.id} (${bestGraded} graded students)`)
 
 // The stand-in roster is built from the graded run's own students, so the mock's
 // existing submissions necessarily overlap the scores being pushed.
@@ -79,6 +98,22 @@ const usersWithBadRow = [
     enrollments: [{ course_section_id: 10, type: 'StudentEnrollment', enrollment_state: 'active' }],
   },
 ]
+
+// Which Canvas user ids carry an existing score in the mock. Chosen from students
+// this run actually graded, so the conflict path is exercised no matter which
+// students happened to be absent.
+const { rows: allRows } = await loadScoreRows(run.id)
+const gradedKeys = new Set(
+  allRows.filter((r) => r.status === 'graded').map((r) => r.student.gtId ?? r.student.username),
+)
+const gradedCanvasIds = canvasUsers
+  .filter((u) => gradedKeys.has(u.sis_user_id ?? u.login_id))
+  .map((u) => u.id)
+if (gradedCanvasIds.length < 2) {
+  console.error('Need at least 2 graded students in the newest graded run.')
+  process.exit(1)
+}
+const conflictUserIds = [gradedCanvasIds[0], gradedCanvasIds[1]]
 
 let gradePostBody = ''
 let progressPolls = 0
@@ -127,10 +162,12 @@ const server = createServer((req, res) => {
   }
 
   if (url.pathname.endsWith('/submissions')) {
-    // A handful already graded: two matching, one differing (a conflict).
+    // Existing Canvas scores are attached to students who were actually *graded* in
+    // this run. Hardcoding the first two rows silently stops testing the conflict
+    // path whenever those students happen to be absentees.
     json([
-      { user_id: 5000, score: null, grade: null, workflow_state: 'unsubmitted' },
-      { user_id: 5001, score: 3, grade: '3', workflow_state: 'graded' },
+      { user_id: conflictUserIds[0], score: 999, grade: '999', workflow_state: 'graded' },
+      { user_id: conflictUserIds[1], score: null, grade: null, workflow_state: 'unsubmitted' },
     ])
     return
   }
@@ -238,14 +275,18 @@ try {
   check('reports section changes rather than silently rewriting', diff.changed.length > 0, `${diff.changed.length} field changes`)
 
   console.log('\n3. Grade push dry run')
-  const { rows } = await loadScoreRows(run.id)
+  const rows = allRows
   const submissions = await client.listSubmissions('123', '777')
   const idByGtId = new Map(users.filter((u) => u.sis_user_id).map((u) => [String(u.sis_user_id), u.id] as const))
   const plan = planGradePush(rows, submissions, idByGtId)
 
   check('plans a push', plan.totalToPush > 0, `${plan.totalToPush} to push`)
   check('holds back absentees instead of zeroing them', plan.skippedNotTaken.length > 0, `${plan.skippedNotTaken.length} skipped`)
-  check('flags the differing existing score as a conflict', plan.conflicts.length === 1, `Canvas had ${plan.conflicts[0]?.existing}`)
+  check(
+    'flags the differing existing score as a conflict',
+    plan.conflicts.length === 1 && plan.conflicts[0]?.existing === 999,
+    `Canvas had ${plan.conflicts[0]?.existing}`,
+  )
   check(
     'no absentee leaks into the push payload',
     !gradesToPush(plan).some((g) => plan.skippedNotTaken.some((s) => s.gtId === g.gtId)),
