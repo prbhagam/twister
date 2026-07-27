@@ -104,7 +104,7 @@ QUESTIONS = [
       v("What does the following print?\n\n" + code("xs = [1, 2, 3]\nprint(len(xs))"), ["`1`", "`2`", "`3`", "`TypeError`", NOTA], 2),
       v("What does the following print?\n\n" + code("xs = [4, 5]\nprint(len(xs))"), ["`1`", "`2`", "`3`", "`TypeError`", NOTA], 1),
       v("What does the following print?\n\n" + code("xs = []\nprint(len(xs))"), ["`0`", "`1`", "`None`", "`TypeError`", NOTA], 0)),
-    q(2,
+    q(1,
       v("What does the following print?\n\n" + code("a = [1, 2]\nb = a\nb.append(3)\nprint(len(a))"), ["`1`", "`2`", "`3`", "`4`", "`TypeError`"], 2),
       v("What does the following print?\n\n" + code("a = [1, 2]\nb = a[:]\nb.append(3)\nprint(len(a))"), ["`1`", "`2`", "`3`", "`4`", "`TypeError`"], 1)),
     q(1,

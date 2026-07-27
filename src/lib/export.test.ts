@@ -1,6 +1,6 @@
 import Papa from 'papaparse'
 import { describe, expect, it } from 'vitest'
-import { MISSING_MARK, canvasCsv, scoresCsv, type ScoreRow } from './export'
+import { MISSING_MARK, canvasCsv, canvasPreflight, scoresCsv, type ScoreRow } from './export'
 import type { GradedQuestion } from './grading'
 
 function question(position: number, letters: string[], awarded: number): GradedQuestion {
@@ -97,6 +97,23 @@ describe('scoresCsv', () => {
       scoresCsv([row({ lastName: 'Zylstra' }), row({ lastName: 'Abbott' }), row({ lastName: 'Marchetti' })]),
     )
     expect(rows.map((r) => r['Last Name'])).toEqual(['Abbott', 'Marchetti', 'Zylstra'])
+  })
+})
+
+describe('canvasPreflight', () => {
+  it('does not claim missing students are simply omitted', () => {
+    // They are recorded as M in the scores export; only the Canvas file leaves
+    // them out, and saying otherwise contradicts what the exports actually do.
+    const [message] = canvasPreflight([
+      row({ lastName: 'Absent', status: 'not_taken', earned: 0, questions: [] }),
+    ])
+    expect(message).toContain(`recorded as ${MISSING_MARK} in the scores export`)
+    expect(message).toContain('Canvas cannot accept')
+    expect(message).not.toMatch(/omitted rather than being given a zero/)
+  })
+
+  it('says nothing about missing students when everyone sat the exam', () => {
+    expect(canvasPreflight([row({ lastName: 'Present' })])).toEqual([])
   })
 })
 

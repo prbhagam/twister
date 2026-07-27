@@ -104,8 +104,9 @@ Download **Canvas gradebook (CSV)** from the run page and upload it via Canvas �
 Grades → Import. It matches students on SIS User ID and needs no API access, so it
 works whatever your Canvas role permits.
 
-Students with no scanned sheet are omitted from that file rather than sent a grade
-Canvas cannot parse — mark them excused or zero yourself.
+Students with no scanned sheet are left out of *that file only* — they are recorded
+as `M` in the scores export, and Canvas cannot accept `M` in a grade cell. Mark them
+excused or zero in Canvas yourself.
 
 ## Choosing the student identifier
 
@@ -149,7 +150,7 @@ seed — enough to identify a stray page and recover its layout.
 
 | Command | What it does |
 |---|---|
-| `python3 scripts/make-sample-questions.py` | Regenerates `samples/sample-exam-50-questions.csv` — 50 questions, 107 variations, for testing |
+| `python3 scripts/make-sample-questions.py` | Regenerates `samples/sample-exam-50-questions.csv` — 50 questions, 107 variations, 1 point each, for testing |
 | `npm run verify` | Full end-to-end verification against a throwaway `verify.db`. Never touches your real database. |
 | `npm test` | Unit tests against the synthetic fixtures in `src/lib/__fixtures__/`. If real files are present in `assets/`, extra checks run against them too; otherwise those are skipped. |
 | `npm run db:seed` | Loads a 12-question demo exam and the sample roster |

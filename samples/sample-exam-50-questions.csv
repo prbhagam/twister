@@ -59,7 +59,7 @@ print(len(xs))
 xs = []
 print(len(xs))
 ```",`0`,`1`,`None`,`TypeError`,None of the above,1,5
-21,2,A,"What does the following print?
+21,1,A,"What does the following print?
 
 ```python
 a = [1, 2]
@@ -67,7 +67,7 @@ b = a
 b.append(3)
 print(len(a))
 ```",`1`,`2`,`3`,`4`,`TypeError`,3,
-21,2,B,"What does the following print?
+21,1,B,"What does the following print?
 
 ```python
 a = [1, 2]

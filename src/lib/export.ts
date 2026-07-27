@@ -171,8 +171,12 @@ export function canvasPreflight(rows: ScoreRow[]): string[] {
 
   const notTaken = rows.filter((r) => r.status === 'not_taken')
   if (notTaken.length) {
+    // The scores export records M for these students. Canvas cannot accept M in a
+    // grade cell, so this one file leaves them out rather than inventing a number.
     problems.push(
-      `${notTaken.length} student(s) have no scanned sheet and are omitted rather than being given a zero.`,
+      `${notTaken.length} student(s) have no scanned sheet. They are recorded as ${MISSING_MARK} in the scores export. ` +
+        `This Canvas file leaves them blank instead, because Canvas cannot accept ${MISSING_MARK} as a grade — ` +
+        `mark them excused or zero in Canvas yourself.`,
     )
   }
 
