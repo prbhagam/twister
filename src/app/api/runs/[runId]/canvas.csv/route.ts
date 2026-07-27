@@ -1,10 +1,12 @@
 import { prisma } from '@/lib/db'
 import { canvasCsv } from '@/lib/export'
 import { loadScoreRows } from '@/lib/run-data'
+import { authorizeRunApi } from '@/lib/authorization'
 
 /** Canvas gradebook import shape; matched on SIS User ID (the GT ID). */
 export async function GET(_request: Request, { params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params
+  if (!await authorizeRunApi(runId, 'export:grades')) return new Response('Not found', { status: 404 })
 
   const run = await prisma.generationRun.findUnique({ where: { id: runId } })
   if (!run) return new Response('Not found', { status: 404 })

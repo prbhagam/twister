@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { prisma } from '@/lib/db'
 import { runDir } from '@/lib/generation'
+import { authorizeRunApi } from '@/lib/authorization'
 
 /** Serves one student's exam PDF, for the review UI's inline viewer. */
 export async function GET(
@@ -9,6 +10,7 @@ export async function GET(
   { params }: { params: Promise<{ runId: string; studentExamId: string }> },
 ) {
   const { runId, studentExamId } = await params
+  if (!await authorizeRunApi(runId, 'grade:view')) return new Response('Not found', { status: 404 })
 
   const studentExam = await prisma.studentExam.findUnique({ where: { id: studentExamId } })
   if (!studentExam || studentExam.runId !== runId || !studentExam.pdfPath) {

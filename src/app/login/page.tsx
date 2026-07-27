@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation'
 import { getSession, hashPassword, setSession, verifyPassword } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { audit } from '@/lib/audit'
 import { Button, Card, Input, Label, Notice } from '@/components/ui'
 
 /**
- * Single instructor account. Credentials come from the environment and the User row
- * is created on first successful login, so there is no signup flow to secure.
+ * Controlled local instructor login. Credentials remain in the environment as in
+ * the original application; the persisted row only holds a secure password hash.
  */
 async function login(formData: FormData) {
   'use server'
@@ -16,23 +17,19 @@ async function login(formData: FormData) {
 
   const adminEmail = (process.env.TWISTER_ADMIN_EMAIL ?? '').trim().toLowerCase()
   const adminPassword = process.env.TWISTER_ADMIN_PASSWORD ?? ''
-
-  if (!adminEmail || !adminPassword) {
-    redirect('/login?error=unconfigured')
-  }
+  if (!adminEmail || !adminPassword) redirect('/login?error=unconfigured')
   if (email !== adminEmail || password !== adminPassword) {
+    await audit({ action: 'auth.login_failed', entityType: 'user', metadata: { email } })
     redirect(`/login?error=invalid&next=${encodeURIComponent(next)}`)
   }
-
-  const user = await prisma.user.findUnique({ where: { email } })
-  if (!user) {
-    await prisma.user.create({ data: { email, passwordHash: hashPassword(password) } })
-  } else if (!verifyPassword(password, user.passwordHash)) {
-    // The env password changed; re-hash so the stored record stays in step.
-    await prisma.user.update({ where: { id: user.id }, data: { passwordHash: hashPassword(password) } })
+  let user = await prisma.user.findUnique({ where: { email } })
+  if (!user) user = await prisma.user.create({ data: { email, passwordHash: hashPassword(password), role: 'OWNER' } })
+  else if (!user.active || !verifyPassword(password, user.passwordHash)) {
+    user = await prisma.user.update({ where: { id: user.id }, data: { passwordHash: hashPassword(password), active: true, role: 'OWNER' } })
   }
 
-  await setSession(email)
+  await setSession(user.id)
+  await audit({ actorUserId: user.id, action: 'auth.login_success', entityType: 'user', entityId: user.id })
   redirect(next.startsWith('/') ? next : '/')
 }
 

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0 <25"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,11 +13,11 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:push": "prisma db push",
+    "db:push": "RUST_LOG=info prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "setup": "prisma db push && playwright install chromium",
-    "verify": "rm -f verify.db && DATABASE_URL=file:./verify.db prisma db push --url file:./verify.db && DATABASE_URL=file:./verify.db tsx prisma/seed.ts && DATABASE_URL=file:./verify.db tsx scripts/e2e-check.ts HP && DATABASE_URL=file:./verify.db tsx scripts/seed-grading.ts"
+    "setup": "RUST_LOG=info prisma db push && playwright install chromium",
+    "verify": "rm -f verify.db && RUST_LOG=info DATABASE_URL=file:./verify.db prisma db push --url file:./verify.db && DATABASE_URL=file:./verify.db tsx prisma/seed.ts && DATABASE_URL=file:./verify.db tsx scripts/e2e-check.ts HP && DATABASE_URL=file:./verify.db tsx scripts/seed-grading.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

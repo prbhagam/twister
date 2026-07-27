@@ -9,20 +9,23 @@ import { distinctExamCount, formatBig } from '@/lib/seed'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label, LinkButton, Notice, Textarea } from '@/components/ui'
 import { DangerZone } from '@/components/DangerZone'
 import { deleteExam, updateExam } from '../../actions'
-import { addQuestion, moveQuestion } from './actions'
+import { addQuestion, approveAllQuestions, moveQuestion, transitionQuestionStatus } from './actions'
 import { CsvImport } from './CsvImport'
 import { GeneratePanel } from './GeneratePanel'
+import { requireExamPermission } from '@/lib/authorization'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ExamPage({ params }: { params: Promise<{ examId: string }> }) {
   const { examId } = await params
+  await requireExamPermission(examId, 'course:view')
 
   const exam = await prisma.exam.findUnique({
     where: { id: examId },
     include: {
       course: { include: { students: true } },
       questions: {
+        where: { archivedAt: null },
         orderBy: { order: 'asc' },
         include: {
           variations: { orderBy: { order: 'asc' }, include: { choices: { orderBy: { order: 'asc' } } } },
@@ -66,14 +69,20 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
             <CardHeader
               title="Questions"
               subtitle={`${exam.questions.length} question${exam.questions.length === 1 ? '' : 's'} · ${exam.questions.reduce((n, q) => n + q.variations.length, 0)} variations`}
-              action={
+              action={<div className="flex gap-2">
+                <form action={approveAllQuestions}>
+                  <input type="hidden" name="examId" value={exam.id} />
+                  <Button type="submit" variant="secondary" disabled={errors.length > 0 || exam.questions.length === 0}>
+                    Approve all valid
+                  </Button>
+                </form>
                 <form action={addQuestion}>
                   <input type="hidden" name="examId" value={exam.id} />
                   <Button type="submit" variant="secondary">
                     Add question
                   </Button>
                 </form>
-              }
+              </div>}
             />
 
             {exam.questions.length === 0 ? (
@@ -103,6 +112,9 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
                           <Badge>
                             {question.points} pt{question.points === 1 ? '' : 's'}
                           </Badge>
+                          <Badge tone={question.workflowStatus === 'APPROVED' ? 'green' : 'amber'}>
+                            {question.workflowStatus.toLowerCase().replace(/_/g, ' ')}
+                          </Badge>
                           {question.variations.map((v) => (
                             <Badge key={v.id} tone={v.choices.length < 5 ? 'amber' : 'neutral'}>
                               {v.label}: {v.choices.length} choices
@@ -112,6 +124,24 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
                         </div>
                       </div>
                       <div className="flex gap-1">
+                        <form action={transitionQuestionStatus} className="flex gap-1">
+                          <input type="hidden" name="examId" value={exam.id} />
+                          <input type="hidden" name="questionId" value={question.id} />
+                          <select
+                            name="status"
+                            defaultValue={question.workflowStatus}
+                            className="rounded border border-slate-200 bg-white px-1 py-0.5 text-xs text-slate-600"
+                            aria-label={`Question ${question.order} workflow status`}
+                          >
+                            <option value="DRAFT">Draft</option>
+                            <option value="IN_REVIEW">In review</option>
+                            <option value="APPROVED">Approved</option>
+                            <option value="RETIRED">Retired</option>
+                          </select>
+                          <button type="submit" className="rounded px-1.5 py-0.5 text-xs text-slate-600 hover:bg-slate-100">
+                            Update
+                          </button>
+                        </form>
                         <form action={moveQuestion}>
                           <input type="hidden" name="questionId" value={question.id} />
                           <input type="hidden" name="direction" value="up" />

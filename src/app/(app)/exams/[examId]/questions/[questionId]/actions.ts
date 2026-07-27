@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/db'
+import { audit } from '@/lib/audit'
+import { requireExamPermission } from '@/lib/authorization'
 
 export interface EditableChoice {
   textMarkdown: string
@@ -32,6 +34,9 @@ export async function saveQuestion(_prev: SaveState, formData: FormData): Promis
   const examId = String(formData.get('examId'))
   const points = Number(formData.get('points') ?? 1)
   const title = String(formData.get('title') ?? '').trim() || null
+  const question = await prisma.question.findUniqueOrThrow({ where: { id: questionId } })
+  if (question.examId !== examId) return { error: 'Question does not belong to this exam.' }
+  const user = await requireExamPermission(examId, 'question:edit')
 
   let variations: EditableVariation[]
   try {
@@ -79,5 +84,7 @@ export async function saveQuestion(_prev: SaveState, formData: FormData): Promis
 
   revalidatePath(`/exams/${examId}/questions/${questionId}`)
   revalidatePath(`/exams/${examId}`)
+  const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
+  await audit({ actorUserId: user.id, action: 'question.edited', entityType: 'question', entityId: questionId, courseId: exam.courseId })
   return { ok: true, savedAt: Date.now() }
 }

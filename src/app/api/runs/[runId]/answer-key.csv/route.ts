@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db'
 import { answerKeyCsv } from '@/lib/export'
 import { loadLabelMaps } from '@/lib/run-data'
 import type { LayoutEntry } from '@/lib/seed'
+import { authorizeRunApi } from '@/lib/authorization'
 
 /**
  * The per-student answer key. Without this an individualized exam is unauditable:
@@ -9,6 +10,7 @@ import type { LayoutEntry } from '@/lib/seed'
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params
+  if (!await authorizeRunApi(runId, 'grade:view')) return new Response('Not found', { status: 404 })
 
   const studentExams = await prisma.studentExam.findMany({
     where: { runId },

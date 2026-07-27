@@ -5,8 +5,12 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { parseIdentityField } from '@/lib/identity'
+import { audit } from '@/lib/audit'
+import { can, requireCoursePermission, requireExamPermission, requireRunPermission, requireUser } from '@/lib/authorization'
 
 export async function createCourse(formData: FormData) {
+  const user = await requireUser()
+  if (!can(user.role, 'course:manage')) return
   const name = String(formData.get('name') ?? '').trim()
   if (!name) return
 
@@ -15,8 +19,10 @@ export async function createCourse(formData: FormData) {
       name,
       title: String(formData.get('title') ?? '').trim() || null,
       term: String(formData.get('term') ?? '').trim() || null,
+      memberships: { create: { userId: user.id, role: user.role, createdById: user.id } },
     },
   })
+  await audit({ actorUserId: user.id, action: 'course.created', entityType: 'course', entityId: course.id, courseId: course.id })
   redirect(`/courses/${course.id}`)
 }
 
@@ -54,11 +60,10 @@ export async function deleteCourse(formData: FormData) {
     where: { id: courseId },
     include: { exams: { include: { runs: { select: { id: true } } } } },
   })
+  const user = await requireCoursePermission(courseId, 'course:manage')
   if (confirmation !== course.name) return
-
-  const runIds = course.exams.flatMap((exam) => exam.runs.map((run) => run.id))
-  await prisma.course.delete({ where: { id: courseId } })
-  await removeRunOutput(runIds)
+  await prisma.course.update({ where: { id: courseId }, data: { archivedAt: new Date(), archivedById: user.id } })
+  await audit({ actorUserId: user.id, action: 'course.archived', entityType: 'course', entityId: courseId, courseId })
 
   revalidatePath('/')
   redirect('/')
@@ -66,6 +71,7 @@ export async function deleteCourse(formData: FormData) {
 
 export async function createExam(formData: FormData) {
   const courseId = String(formData.get('courseId'))
+  const user = await requireCoursePermission(courseId, 'course:manage')
   const title = String(formData.get('title') ?? '').trim()
   if (!title) return
 
@@ -78,6 +84,7 @@ export async function createExam(formData: FormData) {
       instructorSeed: randomBytes(9).toString('base64url'),
     },
   })
+  await audit({ actorUserId: user.id, action: 'exam.created', entityType: 'exam', entityId: exam.id, courseId })
   redirect(`/exams/${exam.id}`)
 }
 
@@ -93,11 +100,10 @@ export async function deleteExam(formData: FormData) {
     where: { id: examId },
     include: { runs: { select: { id: true } } },
   })
+  const user = await requireCoursePermission(exam.courseId, 'course:manage')
   if (confirmation !== exam.title) return
-
-  const runIds = exam.runs.map((run) => run.id)
-  await prisma.exam.delete({ where: { id: examId } })
-  await removeRunOutput(runIds)
+  await prisma.exam.update({ where: { id: examId }, data: { archivedAt: new Date(), archivedById: user.id, lifecycle: 'ARCHIVED' } })
+  await audit({ actorUserId: user.id, action: 'exam.archived', entityType: 'exam', entityId: examId, courseId: exam.courseId })
 
   revalidatePath(`/courses/${exam.courseId}`)
   redirect(`/courses/${exam.courseId}`)
@@ -109,8 +115,12 @@ export async function deleteRun(formData: FormData) {
   const confirmation = String(formData.get('confirm') ?? '').trim()
   if (confirmation !== 'delete') return
 
-  const run = await prisma.generationRun.delete({ where: { id: runId } })
+  const { user, run } = await requireRunPermission(runId, 'delete:permanent')
+  if (user.role !== 'OWNER') return
+  await prisma.generationRun.delete({ where: { id: runId } })
   await removeRunOutput([runId])
+  const exam = await prisma.exam.findUniqueOrThrow({ where: { id: run.examId } })
+  await audit({ actorUserId: user.id, action: 'generation_run.permanently_deleted', entityType: 'generation_run', entityId: runId, courseId: exam.courseId })
 
   revalidatePath(`/exams/${run.examId}`)
   redirect(`/exams/${run.examId}`)
@@ -118,12 +128,14 @@ export async function deleteRun(formData: FormData) {
 
 export async function updateExam(formData: FormData) {
   const examId = String(formData.get('examId'))
+  const user = await requireExamPermission(examId, 'course:manage')
   const identityField = parseIdentityField(String(formData.get('identityField') ?? ''))
 
   const exam = await prisma.exam.findUniqueOrThrow({
     where: { id: examId },
     include: { _count: { select: { runs: true } } },
   })
+  await audit({ actorUserId: user.id, action: 'exam.updated', entityType: 'exam', entityId: examId, courseId: exam.courseId })
 
   // Changing the identity reseeds every student onto a different paper and changes
   // what is stamped in the bubble sheet's ID box. Once exams exist it is almost

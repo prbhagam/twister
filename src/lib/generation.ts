@@ -238,12 +238,31 @@ export async function executeRun(runId: string): Promise<void> {
 
   const runIdentityField = parseIdentityField(run.identityField)
   const instructionsHtml = run.instructions ? await renderMarkdown(run.instructions) : undefined
-  const shellPath = await stageRenderAssets(dir)
-  const renderer = await ExamRenderer.launch({ shellPath })
+  // Renderer startup (especially Chromium) is the most common local failure point.
+  // It must be captured below so a run never remains permanently "running".
+  let renderer: ExamRenderer | undefined
+  try {
+    const shellPath = await stageRenderAssets(dir)
+    renderer = await ExamRenderer.launch({ shellPath })
+  } catch (error) {
+    await prisma.generationRun.update({
+      where: { id: runId },
+      data: {
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+        finishedAt: new Date(),
+      },
+    })
+    throw error
+  }
 
   const ordered = run.studentExams
     .slice()
     .sort((a, b) => byLastName(a.student, b.student))
+
+  // For a small local test run, show useful progress after every booklet. Large
+  // classes retain batched SQLite writes.
+  const progressEvery = ordered.length <= 20 ? 1 : 5
 
   try {
     let completed = 0
@@ -289,7 +308,7 @@ export async function executeRun(runId: string): Promise<void> {
 
         completed++
         // Batch the progress writes; 404 individual updates would thrash SQLite.
-        if (completed % 5 === 0 || completed === ordered.length) {
+        if (completed % progressEvery === 0 || completed === ordered.length) {
           await prisma.generationRun.update({
             where: { id: runId },
             data: { completedCount: completed },

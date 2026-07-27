@@ -6,18 +6,20 @@ import { Badge, Button, Card, CardHeader, Empty, Input, Label } from '@/componen
 import { DangerZone } from '@/components/DangerZone'
 import { createExam, deleteCourse } from '../../actions'
 import { RosterUpload } from './RosterUpload'
+import { requireCoursePermission } from '@/lib/authorization'
 
 export const dynamic = 'force-dynamic'
 
 export default async function CoursePage({ params }: { params: Promise<{ courseId: string }> }) {
   const { courseId } = await params
+  await requireCoursePermission(courseId, 'course:view')
 
   const course = await prisma.course.findUnique({
     where: { id: courseId },
     include: {
-      exams: { orderBy: { updatedAt: 'desc' }, include: { _count: { select: { questions: true, runs: true } } } },
+      exams: { where: { archivedAt: null }, orderBy: { updatedAt: 'desc' }, include: { _count: { select: { questions: true, runs: true } } } },
       students: { orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] },
-      rosterImports: { orderBy: { createdAt: 'desc' }, take: 1 },
+      rosterImports: { where: { archivedAt: null }, orderBy: { createdAt: 'desc' }, take: 1 },
     },
   })
   if (!course) notFound()
