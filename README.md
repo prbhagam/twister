@@ -56,6 +56,8 @@ loads a demo exam plus a roster, first drop your own export at
    variation holds 2–5 answer choices in markdown (code blocks, tables, and LaTeX all
    render). Mark one correct answer, and optionally pin "None of the above" to last.
    Questions can also be imported and exported as CSV.
+   A ready-made bank of 50 questions with 107 variations is at
+   `samples/sample-exam-50-questions.csv` if you just want something to test with.
 3. **Generate.** Pick sections, then run. This *freezes a snapshot* of every question
    and computes each student's layout. Editing questions afterwards can never change
    what has already been printed or how it grades.
@@ -87,7 +89,12 @@ live in that run.
 | Blank | 0, flagged |
 | Multiple bubbles (`A;B`) | 0, flagged |
 | A letter past the end of a short variation | 0, flagged as out-of-range |
-| Gradescope reports `Missing` | recorded as not taken, excluded from the Canvas export |
+| Gradescope reports `Missing` | recorded as not taken; exported as **M**, never 0 |
+
+A student with no scanned sheet exports as `M` in the Score, Percent, and every
+question column — a zero would assert they sat the exam and got everything wrong,
+which is a different claim. The Canvas CSV omits them entirely rather than sending
+a grade Canvas cannot parse.
 
 Every flagged question can be manually overridden. Overrides are stored against the
 student's exam, not the import, so re-importing a corrected CSV does not wipe them.
@@ -166,6 +173,7 @@ seed — enough to identify a stray page and recover its layout.
 
 | Command | What it does |
 |---|---|
+| `python3 scripts/make-sample-questions.py` | Regenerates `samples/sample-exam-50-questions.csv` — 50 questions, 107 variations, for testing |
 | `npm run verify` | Full end-to-end verification against a throwaway `verify.db`. Never touches your real database. |
 | `npm test` | Unit tests against the synthetic fixtures in `src/lib/__fixtures__/`. If real files are present in `assets/`, extra checks run against them too; otherwise those are skipped. |
 | `npm run db:seed` | Loads a 12-question demo exam and the sample roster |

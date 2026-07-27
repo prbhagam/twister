@@ -36,90 +36,161 @@ function escapeHtml(value: string): string {
 const STYLES = String.raw`
   @page { size: Letter; margin: 0.7in 0.75in 0.85in 0.75in; }
 
-  :root { --ink: #111; --rule: #ccc; }
+  :root {
+    --ink: #16191d;
+    --muted: #5c6470;
+    --rule: #d9dde3;
+    --accent: #1c3f94;
+    --surface: #f5f7fa;
+    --sans: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
+    --mono: "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  }
 
   * { box-sizing: border-box; }
 
   body {
     margin: 0;
     color: var(--ink);
-    font: 11.5pt/1.5 "Times New Roman", Times, serif;
+    font: 11pt/1.55 var(--sans);
+    -webkit-font-smoothing: antialiased;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   /* --- cover page --- */
-  .cover { break-after: page; padding-top: 1.2in; }
-  .cover h1 { font-size: 22pt; margin: 0 0 0.15in; letter-spacing: 0.01em; }
-  .cover .course { font-size: 14pt; color: #333; margin: 0 0 0.5in; }
+  .cover { break-after: page; padding-top: 0.9in; }
+  .cover .rule { width: 2.2in; height: 3pt; background: var(--accent); margin-bottom: 0.28in; }
+  .cover h1 {
+    font-size: 27pt;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin: 0 0 0.08in;
+  }
+  .cover .course {
+    font-size: 12.5pt;
+    font-weight: 500;
+    color: var(--muted);
+    margin: 0 0 0.55in;
+  }
+
   .cover .who {
-    border: 1pt solid var(--ink);
-    padding: 0.22in 0.28in;
+    background: var(--surface);
+    border-radius: 6pt;
+    padding: 0.26in 0.3in;
     margin-bottom: 0.45in;
   }
-  .cover .who dl { display: grid; grid-template-columns: 1.1in 1fr; gap: 0.06in 0.15in; margin: 0; }
-  .cover .who dt { font-variant: small-caps; letter-spacing: 0.04em; color: #444; }
-  .cover .who dd { margin: 0; font-weight: 600; }
-  .cover .instructions { font-size: 11pt; }
-  .cover .instructions :first-child { margin-top: 0; }
-  .cover .unique {
-    margin-top: 0.5in;
-    padding-top: 0.14in;
-    border-top: 0.5pt solid var(--rule);
-    font-size: 9.5pt;
-    color: #555;
-    font-style: italic;
+  .cover .who dl {
+    display: grid;
+    grid-template-columns: 0.95in 1fr;
+    gap: 0.11in 0.2in;
+    margin: 0;
   }
+  .cover .who dt {
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--muted);
+    align-self: center;
+  }
+  .cover .who dd {
+    margin: 0;
+    font-size: 12pt;
+    font-weight: 600;
+  }
+  .cover .who dd.code { font-family: var(--mono); font-size: 10.5pt; letter-spacing: 0.06em; }
+
+  .cover .instructions { font-size: 10.5pt; line-height: 1.6; }
+  .cover .instructions > :first-child { margin-top: 0; }
+  .cover .instructions > :last-child { margin-bottom: 0; }
 
   /* --- questions --- */
   .question {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin: 0 0 0.28in;
-    padding-bottom: 0.08in;
+    margin: 0 0 0.26in;
   }
-  .question + .question { border-top: 0.5pt solid var(--rule); padding-top: 0.22in; }
+  .question + .question { border-top: 0.5pt solid var(--rule); padding-top: 0.24in; }
 
-  .qhead { display: flex; align-items: baseline; gap: 0.12in; margin-bottom: 0.06in; }
-  .qnum { font-weight: 700; font-size: 12pt; min-width: 0.3in; }
-  .qpoints { margin-left: auto; font-size: 9pt; color: #666; white-space: nowrap; }
+  .qhead { display: flex; align-items: baseline; gap: 0.12in; margin-bottom: 0.09in; }
+  .qnum {
+    font-size: 12pt;
+    font-weight: 700;
+    color: var(--accent);
+    min-width: 0.28in;
+    letter-spacing: -0.01em;
+  }
+  .qpoints {
+    margin-left: auto;
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
 
-  .prompt { margin: 0 0 0.1in; }
+  .prompt { margin: 0 0 0.13in; }
   .prompt > :first-child { margin-top: 0; }
   .prompt > :last-child { margin-bottom: 0; }
 
   .choices { list-style: none; margin: 0; padding: 0; }
-  .choices li { display: flex; gap: 0.11in; margin: 0.04in 0; break-inside: avoid; }
-  .choice-letter { font-weight: 700; min-width: 0.19in; }
+  .choices li {
+    display: flex;
+    gap: 0.13in;
+    align-items: flex-start;
+    margin: 0.055in 0;
+    break-inside: avoid;
+  }
+  .choice-letter {
+    flex: none;
+    width: 0.2in;
+    font-weight: 700;
+    font-size: 10pt;
+    color: var(--muted);
+    line-height: 1.55;
+  }
   .choice-body > :first-child { margin-top: 0; }
   .choice-body > :last-child { margin-bottom: 0; }
 
   /* --- shared markdown output --- */
   pre {
-    background: #f6f8fa;
-    border: 0.5pt solid #d8dee4;
-    border-radius: 3pt;
-    padding: 6pt 8pt;
-    margin: 0.07in 0;
-    font: 9.5pt/1.4 "SFMono-Regular", Menlo, Consolas, monospace;
+    background: var(--surface);
+    border: 0.5pt solid var(--rule);
+    border-radius: 5pt;
+    padding: 8pt 10pt;
+    margin: 0.1in 0;
+    font: 9pt/1.5 var(--mono);
     white-space: pre-wrap;
     word-break: break-word;
     break-inside: avoid;
   }
   pre code { font: inherit; background: none; padding: 0; }
   code {
-    font: 0.9em/1.3 "SFMono-Regular", Menlo, Consolas, monospace;
-    background: #f2f2f2;
-    padding: 0.5pt 2.5pt;
-    border-radius: 2pt;
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: #eceff3;
+    padding: 1pt 3pt;
+    border-radius: 3pt;
   }
-  table { border-collapse: collapse; margin: 0.07in 0; font-size: 10.5pt; }
-  th, td { border: 0.5pt solid #999; padding: 2.5pt 6pt; text-align: left; }
-  th { background: #f2f2f2; }
+  table {
+    border-collapse: collapse;
+    margin: 0.1in 0;
+    font-size: 10pt;
+    break-inside: avoid;
+  }
+  th, td { border: 0.5pt solid var(--rule); padding: 3.5pt 8pt; text-align: left; }
+  th { background: var(--surface); font-weight: 600; }
   img { max-width: 100%; }
-  blockquote { margin: 0.07in 0; padding-left: 0.14in; border-left: 2pt solid var(--rule); color: #444; }
-  p { margin: 0.06in 0; }
-  ul, ol { margin: 0.06in 0; padding-left: 0.24in; }
+  blockquote {
+    margin: 0.1in 0;
+    padding-left: 0.16in;
+    border-left: 2pt solid var(--rule);
+    color: var(--muted);
+  }
+  p { margin: 0.07in 0; }
+  ul, ol { margin: 0.07in 0; padding-left: 0.26in; }
 `
 
 /**
@@ -128,7 +199,7 @@ const STYLES = String.raw`
  * reassemble it — and the trace code alone recovers the exact layout from the run.
  */
 export function footerTemplate(exam: RenderExam): string {
-  return `<div style="width:100%;font:8pt 'Helvetica Neue',Arial,sans-serif;color:#666;padding:0 0.75in;display:flex;justify-content:space-between;">
+  return `<div style="width:100%;font:7.5pt 'Helvetica Neue',Helvetica,Arial,sans-serif;color:#8a919c;letter-spacing:0.02em;padding:0 0.75in;display:flex;justify-content:space-between;">
     <span>${escapeHtml(exam.studentName)} &middot; ${escapeHtml(exam.gtId)}</span>
     <span>${escapeHtml(exam.examTitle)}</span>
     <span>${escapeHtml(exam.traceCode)} &middot; <span class="pageNumber"></span>/<span class="totalPages"></span></span>
@@ -181,23 +252,22 @@ export function buildExamBody(exam: RenderExam): string {
     )
     .join('')
 
+  // The cover carries the student's identity, the exam code, and nothing else the
+  // instructor did not write. Anything describing how the randomization works would
+  // be publishing the scheme to the room.
   return `
   <section class="cover">
+    <div class="rule"></div>
     <h1>${escapeHtml(exam.examTitle)}</h1>
     <p class="course">${escapeHtml(exam.courseName)}</p>
     <div class="who">
       <dl>
         <dt>Name</dt><dd>${escapeHtml(exam.studentName)}</dd>
-        <dt>GT ID</dt><dd>${escapeHtml(exam.gtId)}</dd>
-        <dt>Exam code</dt><dd>${escapeHtml(exam.traceCode)}</dd>
+        <dt>ID</dt><dd>${escapeHtml(exam.gtId)}</dd>
+        <dt>Exam code</dt><dd class="code">${escapeHtml(exam.traceCode)}</dd>
       </dl>
     </div>
     ${exam.instructionsHtml ? `<div class="instructions">${exam.instructionsHtml}</div>` : ''}
-    <p class="unique">
-      This exam is unique to you. Its questions, its answer choices, and their order
-      differ from every other copy in the room, so answers copied from a neighbour
-      will not match your paper. Record all answers on the bubble sheet.
-    </p>
   </section>
   ${questions}`
 }

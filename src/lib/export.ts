@@ -4,6 +4,9 @@ import type { GradedQuestion } from './grading'
 import { byLastName } from './roster'
 import type { LayoutEntry } from './seed'
 
+/** Recorded in place of a score when a student has no scanned sheet. */
+export const MISSING_MARK = 'M'
+
 export interface ExportStudent {
   firstName: string
   lastName: string
@@ -93,7 +96,11 @@ export function scoresCsv(rows: ScoreRow[]): string {
     .slice()
     .sort((a, b) => byLastName(a.student, b.student))
     .map((row) => {
+      // A student with no scanned sheet gets "M", not 0: a zero asserts they sat the
+      // exam and got everything wrong, which is a different claim from being absent.
+      const missing = row.status === 'not_taken'
       const percent = row.possible > 0 ? (row.earned / row.possible) * 100 : 0
+
       const cells: (string | number)[] = [
         row.student.lastName,
         row.student.firstName,
@@ -103,15 +110,19 @@ export function scoresCsv(rows: ScoreRow[]): string {
         row.student.sections.join(' '),
         row.student.traceCode,
         row.status,
-        row.earned,
+        missing ? MISSING_MARK : row.earned,
         row.possible,
-        percent.toFixed(1),
+        missing ? MISSING_MARK : percent.toFixed(1),
       ]
       const byPosition = new Map(row.questions.map((q) => [q.position, q]))
       for (let p = 1; p <= positions; p++) {
         const q = byPosition.get(p)
-        // What the student marked, with a * when a manual override changed the score.
-        cells.push(q ? `${q.letters.join('/') || '-'}${q.overridden ? '*' : ''}` : '')
+        if (missing) {
+          cells.push(MISSING_MARK)
+        } else {
+          // What the student marked, with a * when a manual override changed it.
+          cells.push(q ? `${q.letters.join('/') || '-'}${q.overridden ? '*' : ''}` : '')
+        }
       }
       return cells
     })

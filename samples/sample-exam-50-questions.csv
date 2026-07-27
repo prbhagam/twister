@@ -1,0 +1,432 @@
+question_number,points,variation_label,prompt,choice_1,choice_2,choice_3,choice_4,choice_5,correct,pin_last
+1,1,A,What is the type of `3 / 1` in Python 3?,`int`,`float`,`str`,`bool`,None of the above,2,5
+1,1,B,What is the type of `3 // 1`?,`int`,`float`,`str`,`bool`,None of the above,1,5
+1,1,C,What is the type of `3 == 1`?,`int`,`float`,`str`,`bool`,None of the above,4,5
+2,1,A,What does `int('7') + 1` evaluate to?,`8`,`'71'`,`71`,`TypeError`,`ValueError`,1,
+2,1,B,What does `'7' + 1` evaluate to?,`8`,`'71'`,`71`,`TypeError`,`ValueError`,4,
+2,1,C,What does `'7' * 2` evaluate to?,`14`,`'77'`,`'7 7'`,`TypeError`,`ValueError`,2,
+3,1,A,What does `float('3.5')` return?,`3.5`,`'3.5'`,`3`,`ValueError`,`TypeError`,1,
+3,1,B,What does `int('3.5')` return?,`3.5`,`3`,`4`,`ValueError`,`TypeError`,4,
+4,1,A,Which of these is a valid Python variable name?,`2nd_place`,`second place`,`second_place`,`class`,`second-place`,3,
+4,1,B,Which of these is **not** a valid Python variable name?,`_total`,`total2`,`Total`,`2total`,`tOtAl`,4,
+5,1,A,What does `type(None)` report?,`<class 'NoneType'>`,`<class 'null'>`,`<class 'bool'>`,`<class 'str'>`,`TypeError`,1,
+5,1,B,What does `bool(None)` evaluate to?,`True`,`False`,`None`,`0`,`TypeError`,2,
+6,1,A,What does `7 // 2` evaluate to?,`3`,`3.5`,`4`,`1`,`TypeError`,1,
+6,1,B,What does `7 % 2` evaluate to?,`0`,`1`,`3`,`3.5`,`TypeError`,2,
+6,1,C,What does `7 / 2` evaluate to?,`3`,`3.5`,`4`,`1`,`TypeError`,2,
+7,1,A,What does `-7 // 2` evaluate to?,`-3`,`-4`,`-3.5`,`3`,`4`,2,
+7,1,B,What does `-7 % 3` evaluate to?,`-1`,`1`,`2`,`-2`,`0`,3,
+8,1,A,What does `2 ** 3 ** 2` evaluate to?,`64`,`512`,`12`,`36`,`TypeError`,2,
+8,1,B,What does `(2 ** 3) ** 2` evaluate to?,`64`,`512`,`12`,`36`,`TypeError`,1,
+9,1,A,Which expression evaluates to `True`?,`1 == '1'`,`bool([])`,"`3 in [1, 2, 3]`",`None > 0`,All of the above,3,5
+9,1,B,Which expression evaluates to `False`?,`bool('0')`,`bool([])`,"`1 in [1, 2]`",`2 == 2.0`,All of the above,2,5
+10,1,A,What does `True and False or True` evaluate to?,`True`,`False`,`None`,`SyntaxError`,None of the above,1,5
+10,1,B,What does `not (True and False)` evaluate to?,`True`,`False`,`None`,`SyntaxError`,None of the above,1,5
+11,1,A,What does `3 < 5 < 4` evaluate to?,`True`,`False`,`SyntaxError`,`TypeError`,None of the above,2,5
+11,1,B,What does `1 < 2 < 3` evaluate to?,`True`,`False`,`SyntaxError`,`TypeError`,None of the above,1,5
+12,1,A,What does `5 if 0 else 6` evaluate to?,`5`,`6`,`0`,`True`,`SyntaxError`,2,
+12,1,B,What does `5 if 1 else 6` evaluate to?,`5`,`6`,`0`,`True`,`SyntaxError`,1,
+13,1,A,What does `'computing'[0:4]` evaluate to?,`'comp'`,`'compu'`,`'omp'`,`'c'`,`IndexError`,1,
+13,1,B,What does `'computing'[-3:]` evaluate to?,`'ing'`,`'ting'`,`'ng'`,`'comput'`,`IndexError`,1,
+13,1,C,What does `'computing'[::2]` evaluate to?,`'cmuig'`,`'optn'`,`'computing'`,`'gnitupmoc'`,`TypeError`,1,
+14,1,A,What does `'abc'[::-1]` evaluate to?,`'cba'`,`'abc'`,`'a'`,`''`,`IndexError`,1,
+14,1,B,What does `'abc'[3]` evaluate to?,`'c'`,`''`,`None`,`IndexError`,`KeyError`,4,
+15,1,A,What does `len('CS 1301')` return?,`6`,`7`,`8`,`4`,None of the above,2,5
+15,1,B,What does `len('')` return?,`0`,`1`,`None`,`TypeError`,None of the above,1,5
+16,1,A,What does `'Hello'.upper()` return?,`'HELLO'`,`'hello'`,`'Hello'`,`None`,`TypeError`,1,
+16,1,B,What does `'Hello'.lower()` return?,`'HELLO'`,`'hello'`,`'Hello'`,`None`,`TypeError`,2,
+17,1,A,"What does `'a,b,c'.split(',')` return?","`['a', 'b', 'c']`",`'abc'`,"`('a', 'b', 'c')`","`['a,b,c']`",`TypeError`,1,
+17,1,B,"What does `'-'.join(['a', 'b'])` return?",`'a-b'`,`'ab'`,"`['a', '-', 'b']`",`'a - b'`,`TypeError`,1,
+18,1,A,What does `'  hi  '.strip()` return?,`'hi'`,`'  hi'`,`'hi  '`,`'hi'` with the spaces kept,`None`,1,
+18,1,B,"What does `'banana'.replace('a', 'o')` return?",`'bonono'`,`'bonana'`,`'banana'`,`'onnn'`,`None`,1,
+19,1,A,What does `'cat' in 'concatenate'` evaluate to?,`True`,`False`,`3`,`TypeError`,None of the above,1,5
+19,1,B,What does `'dog' in 'concatenate'` evaluate to?,`True`,`False`,`-1`,`TypeError`,None of the above,2,5
+20,1,A,"What does the following print?
+
+```python
+xs = [1, 2, 3]
+print(len(xs))
+```",`1`,`2`,`3`,`TypeError`,None of the above,3,5
+20,1,B,"What does the following print?
+
+```python
+xs = [4, 5]
+print(len(xs))
+```",`1`,`2`,`3`,`TypeError`,None of the above,2,5
+20,1,C,"What does the following print?
+
+```python
+xs = []
+print(len(xs))
+```",`0`,`1`,`None`,`TypeError`,None of the above,1,5
+21,2,A,"What does the following print?
+
+```python
+a = [1, 2]
+b = a
+b.append(3)
+print(len(a))
+```",`1`,`2`,`3`,`4`,`TypeError`,3,
+21,2,B,"What does the following print?
+
+```python
+a = [1, 2]
+b = a[:]
+b.append(3)
+print(len(a))
+```",`1`,`2`,`3`,`4`,`TypeError`,2,
+22,1,A,"What does `[1, 2] + [3]` evaluate to?","`[1, 2, 3]`","`[1, 2, [3]]`","`[4, 2]`",`TypeError`,None of the above,1,5
+22,1,B,"What does `[1, 2] * 2` evaluate to?","`[1, 2, 1, 2]`","`[2, 4]`","`[1, 2, 2]`",`TypeError`,None of the above,1,5
+23,1,A,"What does the following print?
+
+```python
+xs = [1, 2, 3]
+xs.insert(1, 9)
+print(xs)
+```","`[1, 9, 2, 3]`","`[9, 1, 2, 3]`","`[1, 2, 9, 3]`","`[1, 2, 3, 9]`",`TypeError`,1,
+23,1,B,"What does the following print?
+
+```python
+xs = [1, 2, 3]
+xs.pop(0)
+print(xs)
+```","`[2, 3]`","`[1, 2]`","`[1, 3]`","`[1, 2, 3]`",`TypeError`,1,
+24,1,A,"What does `sorted([3, 1, 2])` return?","`[1, 2, 3]`","`[3, 2, 1]`",`None`,"`[3, 1, 2]`",`TypeError`,1,
+24,1,B,"What does `[3, 1, 2].sort()` return?","`[1, 2, 3]`","`[3, 2, 1]`",`None`,"`[3, 1, 2]`",`TypeError`,3,
+25,1,A,"What does `[1, 2, 3][1:]` evaluate to?","`[2, 3]`","`[1, 2]`",`[1]`,`[3]`,`IndexError`,1,
+25,1,B,"What does `[1, 2, 3][:-1]` evaluate to?","`[1, 2]`","`[2, 3]`",`[3]`,`[1]`,`IndexError`,1,
+26,1,A,"What does `sum([1, 2, 3])` return?",`6`,`3`,"`[1, 2, 3]`",`123`,`TypeError`,1,
+26,1,B,"What does `max([1, 5, 3])` return?",`5`,`1`,`3`,`9`,`TypeError`,1,
+27,1,A,What does `list('abc')` return?,"`['a', 'b', 'c']`",`['abc']`,`'abc'`,`[abc]`,`TypeError`,1,
+27,1,B,What does `list(range(3))` return?,"`[0, 1, 2]`","`[1, 2, 3]`","`[0, 1, 2, 3]`",`range(3)`,`TypeError`,1,
+28,1,A,"How many times does the body of this loop run?
+
+```python
+for i in range(2, 10, 3):
+    print(i)
+```",`2`,`3`,`4`,`8`,None of the above,2,5
+28,1,B,"How many times does the body of this loop run?
+
+```python
+for i in range(0, 10, 2):
+    print(i)
+```",`2`,`4`,`5`,`10`,None of the above,3,5
+28,1,C,"How many times does the body of this loop run?
+
+```python
+for i in range(5):
+    print(i)
+```",`4`,`5`,`6`,`0`,None of the above,2,5
+29,1,A,"What is the last value printed?
+
+```python
+for i in range(3):
+    print(i)
+```",`0`,`1`,`2`,`3`,nothing is printed,3,
+29,1,B,"What is the first value printed?
+
+```python
+for i in range(1, 4):
+    print(i)
+```",`0`,`1`,`2`,`4`,nothing is printed,2,
+30,1,A,"What does the following print?
+
+```python
+total = 0
+for i in [1, 2, 3]:
+    total += i
+print(total)
+```",`3`,`6`,`0`,"`[1, 2, 3]`",`TypeError`,2,
+30,1,B,"What does the following print?
+
+```python
+total = 1
+for i in [1, 2, 3]:
+    total *= i
+print(total)
+```",`6`,`3`,`1`,`0`,`TypeError`,1,
+31,1,A,"What does the following print?
+
+```python
+i = 0
+while i < 3:
+    i += 1
+print(i)
+```",`2`,`3`,`4`,the loop never ends,`0`,2,
+31,1,B,"What does the following print?
+
+```python
+i = 0
+while i < 3:
+    i += 2
+print(i)
+```",`2`,`3`,`4`,the loop never ends,`0`,3,
+32,1,A,"What does the following print?
+
+```python
+for i in range(5):
+    if i == 2:
+        break
+print(i)
+```",`1`,`2`,`4`,`5`,nothing,2,
+32,1,B,"What does the following print?
+
+```python
+count = 0
+for i in range(5):
+    if i == 2:
+        continue
+    count += 1
+print(count)
+```",`3`,`4`,`5`,`2`,nothing,2,
+33,1,A,"How many lines does this nested loop print?
+
+```python
+for i in range(3):
+    for j in range(2):
+        print(i, j)
+```",`5`,`6`,`3`,`2`,`9`,2,
+33,1,B,"How many lines does this nested loop print?
+
+```python
+for i in range(4):
+    for j in range(3):
+        print(i, j)
+```",`7`,`12`,`4`,`3`,`9`,2,
+34,1,A,"What does the following print?
+
+```python
+x = 5
+if x > 3:
+    print('big')
+elif x > 1:
+    print('medium')
+else:
+    print('small')
+```",`big`,`medium`,`small`,`big` and `medium`,nothing,1,
+34,1,B,"What does the following print?
+
+```python
+x = 2
+if x > 3:
+    print('big')
+elif x > 1:
+    print('medium')
+else:
+    print('small')
+```",`big`,`medium`,`small`,`medium` and `small`,nothing,2,
+35,1,A,Which values of `x` make `if x:` run its body?,`0`,`''`,`[]`,`'0'`,`None`,4,
+35,1,B,Which values of `x` make `if not x:` run its body?,`1`,`'a'`,`[0]`,`[]`,`True`,4,
+36,1,A,"What does the following print?
+
+```python
+x = 4
+if x % 2 == 0:
+    print('even')
+else:
+    print('odd')
+```",`even`,`odd`,both,nothing,`SyntaxError`,1,
+36,1,B,"What does the following print?
+
+```python
+x = 7
+if x % 2 == 0:
+    print('even')
+else:
+    print('odd')
+```",`even`,`odd`,both,nothing,`SyntaxError`,2,
+37,1,A,"What does the following print?
+
+```python
+x = 10
+if x > 5:
+    if x > 20:
+        print('a')
+    else:
+        print('b')
+else:
+    print('c')
+```",`a`,`b`,`c`,nothing,`SyntaxError`,2,
+37,1,B,"What does the following print?
+
+```python
+x = 30
+if x > 5:
+    if x > 20:
+        print('a')
+    else:
+        print('b')
+else:
+    print('c')
+```",`a`,`b`,`c`,nothing,`SyntaxError`,1,
+38,1,A,"What is printed?
+
+```python
+x = 3
+if x == 3:
+    pass
+print('done')
+```",`done`,`3`,nothing,`SyntaxError`,`NameError`,1,
+38,1,B,"What is printed?
+
+```python
+x = 3
+if x = 3:
+    print('yes')
+```",`yes`,`3`,nothing,`SyntaxError`,`NameError`,4,
+39,1,A,"What does `f(3)` return?
+
+```python
+def f(n):
+    if n > 2:
+        n = n * 2
+    return n
+```",`3`,`6`,`None`,`2`,None of the above,2,5
+39,1,B,"What does `f(1)` return?
+
+```python
+def f(n):
+    if n > 2:
+        n = n * 2
+    return n
+```",`1`,`2`,`None`,`0`,None of the above,1,5
+39,1,C,"What does `f(4)` return?
+
+```python
+def f(n):
+    if n > 2:
+        n = n * 2
+```",`4`,`8`,`None`,`2`,None of the above,3,5
+40,1,A,"What does the following print?
+
+```python
+x = 10
+
+def f():
+    x = 20
+
+f()
+print(x)
+```",`10`,`20`,`None`,`NameError`,None of the above,1,5
+40,1,B,"What does the following print?
+
+```python
+x = 10
+
+def f():
+    global x
+    x = 20
+
+f()
+print(x)
+```",`10`,`20`,`None`,`NameError`,None of the above,2,5
+41,1,A,"What does `g(2)` return?
+
+```python
+def g(n, k=3):
+    return n + k
+```",`2`,`3`,`5`,`None`,`TypeError`,3,
+41,1,B,"What does `g(2, 10)` return?
+
+```python
+def g(n, k=3):
+    return n + k
+```",`2`,`5`,`12`,`None`,`TypeError`,3,
+42,1,A,"What does the following print?
+
+```python
+def f():
+    return 1
+    return 2
+
+print(f())
+```",`1`,`2`,`3`,`None`,`SyntaxError`,1,
+42,1,B,"What does the following print?
+
+```python
+def f():
+    print(1)
+    return
+    print(2)
+
+f()
+```",`1`,`2`,`1` then `2`,`None`,`SyntaxError`,1,
+43,1,A,"What does `h(3)` return?
+
+```python
+def h(n):
+    if n <= 1:
+        return 1
+    return n * h(n - 1)
+```",`3`,`6`,`9`,`1`,infinite recursion,2,
+43,1,B,"What does `h(4)` return?
+
+```python
+def h(n):
+    if n <= 1:
+        return 1
+    return n * h(n - 1)
+```",`10`,`16`,`24`,`4`,infinite recursion,3,
+44,1,A,"What happens when `f()` is called?
+
+```python
+def f(a, b):
+    return a + b
+
+f(1)
+```",returns `1`,returns `None`,`TypeError`,`NameError`,`SyntaxError`,3,
+44,1,B,"What happens when this runs?
+
+```python
+def f(a, b=2):
+    return a + b
+
+print(f(1))
+```",prints `1`,prints `3`,`TypeError`,`NameError`,`SyntaxError`,2,
+45,1,A,"What does the following print?
+
+```python
+d = {""a"": 1, ""b"": 2}
+print(d.get(""c"", 0))
+```",`0`,`None`,`KeyError`,`2`,`'c'`,1,
+45,1,B,"What does the following print?
+
+```python
+d = {""a"": 1, ""b"": 2}
+print(d[""c""])
+```",`0`,`None`,`KeyError`,`2`,`'c'`,3,
+46,1,A,"What does `len({'a': 1, 'b': 2})` return?",`1`,`2`,`4`,`0`,`TypeError`,2,
+46,1,B,"What does `list({'a': 1, 'b': 2})` return?","`['a', 'b']`","`[1, 2]`","`[('a', 1), ('b', 2)]`","`{'a', 'b'}`",`TypeError`,1,
+47,1,A,Which of these is **mutable** in Python?,`tuple`,`str`,`list`,`int`,,3,
+47,1,B,Which of these is **immutable** in Python?,`list`,`dict`,`set`,`tuple`,,4,
+48,1,A,"What does the following print?
+
+```python
+t = (1, 2)
+t[0] = 5
+print(t)
+```","`(5, 2)`","`(1, 2)`","`[5, 2]`",`TypeError`,`IndexError`,4,
+48,1,B,"What does the following print?
+
+```python
+t = (1, 2)
+print(t + (3,))
+```","`(1, 2, 3)`","`(1, 2, (3,))`","`[1, 2, 3]`",`TypeError`,`IndexError`,1,
+49,1,A,"What does the following print?
+
+```python
+try:
+    print(1 / 0)
+except ZeroDivisionError:
+    print('caught')
+```",`caught`,`0`,`inf`,the program crashes,None of the above,1,5
+49,1,B,"What does the following print?
+
+```python
+try:
+    print(int('x'))
+except ValueError:
+    print('caught')
+```",`caught`,`0`,`x`,the program crashes,None of the above,1,5
+50,1,A,What does `[i * 2 for i in range(3)]` evaluate to?,"`[0, 2, 4]`","`[2, 4, 6]`","`[0, 1, 2]`","`[1, 2, 3]`",`TypeError`,1,
+50,1,B,What does `[i for i in range(5) if i % 2 == 0]` evaluate to?,"`[0, 2, 4]`","`[1, 3]`","`[0, 1, 2, 3, 4]`","`[2, 4]`",`TypeError`,1,
