@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { CanvasClient, canvasPreflight } from '@/lib/canvas'
-import { CanvasPush } from './CanvasPush'
+import { canvasPreflight } from '@/lib/export'
 import { prisma } from '@/lib/db'
 import { FLAGGED } from '@/lib/grading'
 import { sectionLabel } from '@/lib/roster'
@@ -26,27 +25,6 @@ function DownloadLink({ href, title, note }: { href: string; title: string; note
       <span className="mt-0.5 block text-xs text-slate-500">{note}</span>
     </a>
   )
-}
-
-/** Canvas assignments for the push target picker; failures render in place. */
-async function loadCanvasAssignments(canvasCourseId: string | null) {
-  const client = CanvasClient.fromEnv()
-  if (!client || !canvasCourseId) return null
-
-  try {
-    const assignments = await client.listAssignments(canvasCourseId)
-    return {
-      assignments: assignments.map((a) => ({
-        id: String(a.id),
-        name: a.name,
-        points: a.points_possible,
-        published: a.published,
-      })),
-      error: null,
-    }
-  } catch (error) {
-    return { assignments: [], error: error instanceof Error ? error.message : String(error) }
-  }
 }
 
 export default async function RunPage({ params }: { params: Promise<{ runId: string }> }) {
@@ -85,8 +63,6 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
 
   const sections = (JSON.parse(run.sections) as string[]).map(sectionLabel)
   const canvasIssues = canvasPreflight(rows)
-  const canvasConfigured = CanvasClient.isConfigured()
-  const canvas = await loadCanvasAssignments(run.exam.course.canvasCourseId)
 
   return (
     <div className="space-y-6">
@@ -144,22 +120,6 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
             />
             <GradingPanel runId={run.id} />
           </Card>
-
-          {canvasConfigured && graded.length > 0 ? (
-            <Card>
-              <CardHeader
-                title="Push scores to Canvas"
-                subtitle="Writes to student records — shows a full diff first"
-              />
-              <CanvasPush
-                runId={run.id}
-                assignments={canvas?.assignments ?? []}
-                linkedAssignmentId={run.exam.canvasAssignmentId}
-                loadError={canvas?.error ?? null}
-                courseLinked={Boolean(run.exam.course.canvasCourseId)}
-              />
-            </Card>
-          ) : null}
 
           <Card>
             <CardHeader

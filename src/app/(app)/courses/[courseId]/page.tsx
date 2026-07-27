@@ -3,39 +3,11 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { sectionLabel } from '@/lib/roster'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label } from '@/components/ui'
-import { CanvasClient, staffRoleFor } from '@/lib/canvas'
 import { DangerZone } from '@/components/DangerZone'
 import { createExam, deleteCourse } from '../../actions'
-import { CanvasSync } from './CanvasSync'
 import { RosterUpload } from './RosterUpload'
 
 export const dynamic = 'force-dynamic'
-
-/**
- * Canvas courses for the picker. A Canvas outage or a bad token must not take the
- * course page down, so the failure is returned and rendered in place.
- */
-async function loadCanvasCourses() {
-  const client = CanvasClient.fromEnv()
-  if (!client) return null
-
-  try {
-    const courses = await client.listCourses()
-    return {
-      courses: courses.map((c) => ({
-        id: String(c.id),
-        name: c.course_code ? `${c.course_code} — ${c.name}` : c.name,
-        // Shown so a course you TA is distinguishable from one you teach.
-        term: [c.term?.name, staffRoleFor(c) === 'ta' ? 'TA' : staffRoleFor(c) === 'designer' ? 'Designer' : null]
-          .filter(Boolean)
-          .join(' · '),
-      })),
-      error: null,
-    }
-  } catch (error) {
-    return { courses: [], error: error instanceof Error ? error.message : String(error) }
-  }
-}
 
 export default async function CoursePage({ params }: { params: Promise<{ courseId: string }> }) {
   const { courseId } = await params
@@ -49,8 +21,6 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
     },
   })
   if (!course) notFound()
-
-  const canvas = await loadCanvasCourses()
 
   const sections = new Map<string, number>()
   for (const student of course.students) {
@@ -113,21 +83,6 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
                   : 'No roster imported yet'
               }
             />
-            {canvas ? (
-              <div className="border-b border-slate-100">
-                <p className="px-5 pt-4 text-xs font-medium text-slate-600">Sync from Canvas</p>
-                <CanvasSync
-                  courseId={course.id}
-                  courses={canvas.courses}
-                  linkedCanvasCourseId={course.canvasCourseId}
-                  loadError={canvas.error}
-                />
-              </div>
-            ) : null}
-
-            {canvas ? (
-              <p className="px-5 pt-4 text-xs font-medium text-slate-600">Or import a CSV</p>
-            ) : null}
             <RosterUpload courseId={course.id} />
 
             {sections.size > 0 ? (

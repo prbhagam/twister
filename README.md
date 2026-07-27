@@ -29,7 +29,6 @@ Edit `.env`:
 | `TWISTER_SESSION_SECRET` | Signs the session cookie. Generate with `openssl rand -hex 32`. |
 | `DATABASE_URL` | Defaults to `file:./dev.db`. |
 | `TWISTER_OUTPUT_DIR` | Where generated PDFs are written. Defaults to `./output`. |
-| `CANVAS_BASE_URL` / `CANVAS_TOKEN` | Optional. Enables Canvas roster sync and score push. Leave blank to use CSV only. |
 
 Then:
 
@@ -67,7 +66,7 @@ loads a demo exam plus a roster, first drop your own export at
    writing anything, then scores each student against their own key.
 6. **Review and export.** Each student's page shows their actual PDF beside a
    question-by-question comparison of the key against what they marked. Export scores
-   alphabetically by last name, or as a Canvas gradebook import.
+   alphabetically by last name, or as a Canvas gradebook import CSV.
 
 ## Deleting things
 
@@ -95,24 +94,9 @@ student's exam, not the import, so re-importing a corrected CSV does not wipe th
 
 ## Canvas
 
-Optional. Set `CANVAS_BASE_URL` and `CANVAS_TOKEN` (a personal access token from
-Canvas → Account → Settings) and two things light up. Leave them blank and
-everything still works through CSV import/export.
-
-Courses you **teach, TA, or design** all appear in the picker; the role is shown
-beside the term so a course you support is distinguishable from one you run.
-
-**Roster sync.** Link the course to a Canvas course, then pull the live roster —
-which picks up students who added or dropped since your last import, the failure
-mode a CSV snapshot cannot catch. The sync shows added / dropped / changed before
-writing anything. Students who left Canvas are *not* deleted: they may already have
-a generated exam and grades attached, so exclude them by section at generation time.
-
-**Score push.** Pick the Canvas assignment and preview the push: how many scores are
-new, how many already match, and which ones would overwrite a different score that
-is already in Canvas. Only then does it send. Students with no scanned sheet are
-skipped rather than pushed a zero — "absent" and "scored zero" are different claims,
-and only you should make the second one.
+Scores go to Canvas through the **Canvas gradebook (CSV)** download on the run page:
+Canvas → Grades → Import. It matches on SIS User ID and needs no API access, so it
+works regardless of what your Canvas role permits.
 
 ### Choosing the seeding identity
 
@@ -128,47 +112,39 @@ Set it per exam under **Student identifier**: *GT ID* (stamps `903000101`) or
 student's SID and match it. The setting locks once a run exists, because changing it
 reseeds every student onto a different paper.
 
-Username exists for two reasons: a Canvas token without SIS permission cannot see GT
-IDs at all, and some Gradescope rosters are keyed on the GT account rather than the
-nine-digit number.
+Both identifiers are stored when the roster supplies them, and grading matches an
+export keyed on either one plus email — so a roster imported one way still grades
+against an export keyed the other. Only the *stamped* value has to be right.
 
-Both identifiers are stored whenever available, and grading matches an export keyed
-on either one plus email — so a roster imported one way still grades against an
-export keyed the other. Only the *stamped* value has to be right.
+Generation refuses to start if any student lacks the identity their exam seeds from,
+and names them. Seeding on a blank value would give every affected student the same
+paper.
 
-Roster import is permissive: it stores whatever identifiers the source supplies and
-rejects only a student who has none at all. The strict check happens at generation,
-which refuses to start if any student lacks the identity that exam seeds from and
-names them. Canvas's own internal user id is never used as a fallback — seeding on
-it would produce exams that cannot be reproduced.
+### Adding the Canvas API later
 
-If your Canvas token cannot read SIS data, the sync says so explicitly and reports
-how many usernames it did get, so you know to set the exam to *GT username*.
+A working Canvas API integration — live roster sync and direct score push — was
+built and then removed. It is parked at the **`canvas-api` git tag**, not deleted:
 
-Run `npx tsx scripts/canvas-identity-check.ts <canvasCourseId>` to see which
-identifiers your token can actually read. It prints counts and uniqueness only, with
-redacted samples, so it is safe to paste into a ticket.
+```bash
+git show canvas-api --stat            # what it contained
+git checkout canvas-api -- src/lib/canvas   # restore a piece of it
+```
 
-### When Canvas refuses the score push
+`Course.canvasCourseId` and `Exam.canvasAssignmentId` are still in the schema and
+unused, so reviving it is a code change rather than a migration.
 
-Reading and writing grades needs the **Grades - edit** permission, granted per course
-role. TA roles commonly have it withheld, so a token that works in a course you teach
-can be refused in one you TA. Errors name the endpoint that was refused rather than
-saying "permission denied", and
-`npx tsx scripts/canvas-permission-check.ts <courseId> <assignmentId>` probes each
-endpoint separately so you can see exactly what is allowed.
+Two things that cost time the first time round, worth knowing before you start:
 
-The push is never required: the **Canvas gradebook (CSV)** download on the run page
-uploads through Canvas → Grades → Import and needs no API permission at all.
-
-### Token handling
+- Reading or writing grades needs the Canvas **Grades - edit** permission, granted
+  per course role. TA roles commonly have it withheld, so a token that works in a
+  course you teach can be refused in one you TA.
+- A token without SIS read access returns no GT IDs at all. Rosters pulled that way
+  carry only usernames, so those exams must be seeded on *GT username*.
 
 A Canvas personal access token cannot be scoped: it carries the full permissions of
-whoever minted it, across every course they can reach, including writing grades. It
-is read from server environment only, is never written to the database, and never
-reaches a browser. Treat the machine running TWISTER accordingly. If a Canvas admin
-will issue a Developer Key (OAuth2), that is scoped and revocable and materially
-safer — `src/lib/canvas/client.ts` is the only module that would need to change.
+whoever minted it across every course they can reach, including writing grades. If a
+Canvas admin will issue a Developer Key (OAuth2) instead, that is scoped and
+revocable and materially safer.
 
 ## How the randomization works
 
@@ -199,9 +175,6 @@ seed — enough to identify a stray page and recover its layout.
 | `npx tsx scripts/preview-bubble-sheet.ts` | Renders stamped bubble sheets for checking field placement |
 | `npx tsx scripts/full-run.ts` | Generates the entire seeded class, for timing |
 | `npx tsx scripts/seed-grading.ts` | Writes a synthetic grading import against the newest run |
-| `npx tsx scripts/canvas-identity-check.ts <courseId>` | Reports which student identifiers your Canvas token can read |
-| `npx tsx scripts/canvas-permission-check.ts <courseId> [assignmentId]` | Probes each Canvas endpoint separately and reports which your token may call. Read-only. |
-| `npx tsx scripts/canvas-check.ts` | Drives the Canvas client against a local stand-in for the Canvas API over real HTTP — pagination, bearer auth, grade-push encoding, Progress polling. Needs a graded run. |
 
 ## Notes and limits
 

@@ -31,6 +31,8 @@ model Course {
   name           String // "CS 1301"
   title          String? // "Introduction to Computing"
   term           String?
+  // Reserved for a future Canvas API integration; unused today. Kept so reviving it
+  // is a code change rather than a migration. See the `canvas-api` git tag.
   canvasCourseId String?
   createdAt      DateTime @default(now())
 
@@ -45,8 +47,7 @@ model Exam {
   title          String
   instructorSeed String
   instructions   String? // markdown, printed on the cover page
-  // Canvas assignment this exam's scores get pushed to. Only the id is stored —
-  // the API token lives in server environment and never touches the database.
+  // Reserved for a future Canvas API integration; unused today. See `canvasCourseId`.
   canvasAssignmentId String?
   // Which student identifier seeds the randomization and gets stamped into the
   // bubble sheet's ID box: "gtId" or "username". This MUST match whatever

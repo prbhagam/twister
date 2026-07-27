@@ -141,6 +141,33 @@ export function canvasCsv(rows: ScoreRow[], assignmentName: string): string {
   return Papa.unparse({ fields, data })
 }
 
+/**
+ * Rows the Canvas gradebook import would reject, surfaced before you download the
+ * CSV rather than after Canvas silently skips them.
+ */
+export function canvasPreflight(rows: ScoreRow[]): string[] {
+  const problems: string[] = []
+
+  // Canvas matches on SIS User ID; a student with neither identifier cannot match.
+  const missingId = rows.filter(
+    (r) => !/^\d{9}$/.test(r.student.gtId ?? '') && !r.student.username,
+  )
+  if (missingId.length) {
+    problems.push(
+      `${missingId.length} student(s) have neither a GT ID nor a username; Canvas cannot match them.`,
+    )
+  }
+
+  const notTaken = rows.filter((r) => r.status === 'not_taken')
+  if (notTaken.length) {
+    problems.push(
+      `${notTaken.length} student(s) have no scanned sheet and are omitted rather than being given a zero.`,
+    )
+  }
+
+  return problems
+}
+
 /** Flat dump of the frozen question bank for a run — the archival record. */
 export function runQuestionsCsv(
   questions: {
