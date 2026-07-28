@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { parseIdentityField } from '@/lib/identity'
 import { audit } from '@/lib/audit'
+import { purgeArchivedCourse, restoreArchivedCourse } from '@/lib/course-admin'
 import { can, requireCoursePermission, requireExamPermission, requireRunPermission, requireUser } from '@/lib/authorization'
 
 export async function createCourse(formData: FormData) {
@@ -64,6 +65,34 @@ export async function deleteCourse(formData: FormData) {
   if (confirmation !== course.name) return
   await prisma.course.update({ where: { id: courseId }, data: { archivedAt: new Date(), archivedById: user.id } })
   await audit({ actorUserId: user.id, action: 'course.archived', entityType: 'course', entityId: courseId, courseId })
+
+  revalidatePath('/')
+  redirect('/')
+}
+
+/** Restores an archived course. The work lives in lib/course-admin. */
+export async function restoreCourse(formData: FormData) {
+  const courseId = String(formData.get('courseId'))
+  const user = await requireCoursePermission(courseId, 'course:manage')
+  await restoreArchivedCourse(courseId, user.id)
+
+  revalidatePath('/')
+  redirect(`/courses/${courseId}`)
+}
+
+/**
+ * Permanently deletes an archived course. Requires `delete:permanent` and the
+ * course name typed back; the deletion itself lives in lib/course-admin.
+ */
+export async function purgeCourse(formData: FormData) {
+  const courseId = String(formData.get('courseId'))
+  const confirmation = String(formData.get('confirm') ?? '').trim()
+
+  const course = await prisma.course.findUniqueOrThrow({ where: { id: courseId } })
+  const user = await requireCoursePermission(courseId, 'delete:permanent')
+  if (confirmation !== course.name) return
+
+  await purgeArchivedCourse(courseId, user.id)
 
   revalidatePath('/')
   redirect('/')

@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { prisma } from '@/lib/db'
 import { Button, Card, CardHeader, Empty, Input, Label } from '@/components/ui'
 import { createCourse } from './actions'
-import { requireUser } from '@/lib/authorization'
+import { can, requireUser } from '@/lib/authorization'
+import { ArchivedCourses } from './ArchivedCourses'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,21 @@ export default async function DashboardPage() {
     include: {
       _count: { select: { exams: true, students: true } },
       exams: { orderBy: { updatedAt: 'desc' }, take: 4 },
+    },
+  })
+
+  // Archived courses are hidden from the list above; surfaced separately so a
+  // course archived by mistake can be recovered and one archived on purpose does
+  // not quietly keep its roster forever.
+  const archived = await prisma.course.findMany({
+    where:
+      user.role === 'OWNER'
+        ? { archivedAt: { not: null } }
+        : { archivedAt: { not: null }, memberships: { some: { userId: user.id, active: true } } },
+    orderBy: { archivedAt: 'desc' },
+    include: {
+      _count: { select: { exams: true, students: true } },
+      exams: { select: { _count: { select: { runs: true } } } },
     },
   })
 
@@ -60,6 +76,19 @@ export default async function DashboardPage() {
             </Card>
           ))
         )}
+
+        <ArchivedCourses
+          canPurge={can(user.role, 'delete:permanent')}
+          courses={archived.map((course) => ({
+            id: course.id,
+            name: course.name,
+            title: course.title,
+            archivedAt: course.archivedAt,
+            students: course._count.students,
+            exams: course._count.exams,
+            runs: course.exams.reduce((n, exam) => n + exam._count.runs, 0),
+          }))}
+        />
       </div>
 
       <Card className="h-fit p-5">

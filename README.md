@@ -177,10 +177,19 @@ course is about 80 MB and takes around ten seconds.
 
 ## Deleting things
 
-Courses, exams, and generation runs can each be deleted from their own page. Deletes
-cascade — a course takes its roster, every exam, every run, all grades, and the
-generated PDFs on disk with it — so each one requires typing the course name, the
-exam title, or the word `delete` before the button becomes active. There is no undo.
+Courses, exams, and generation runs can each be deleted from their own page. Each
+requires typing the course name, the exam title, or the word `delete` before the
+button becomes active.
+
+**Deleting a course archives it rather than destroying it.** It disappears from the
+dashboard list but keeps its roster, exams, runs and grades. Archived courses appear
+in their own section at the bottom of the dashboard, where they can be **restored**,
+or — for a role holding `delete:permanent` — **permanently deleted**, which cascades
+through the roster, exams, questions, runs and grades and removes the generated PDFs
+from disk. That last step is the only one with no undo, and it is only offered for a
+course that is already archived.
+
+Deleting an exam or a run destroys it outright, along with its PDFs.
 
 Deleting a run makes any paper already printed from it ungradable: the answer keys
 live in that run.
