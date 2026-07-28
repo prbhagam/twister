@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/db'
+import { gradedRunsForCourse } from '@/lib/graded-export'
 import { sectionLabel } from '@/lib/roster'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label } from '@/components/ui'
 import { DangerZone } from '@/components/DangerZone'
@@ -23,6 +24,9 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
     },
   })
   if (!course) notFound()
+
+  // Drives the ZIP button: hidden until something in the course is actually graded.
+  const gradedRuns = await gradedRunsForCourse(course.id)
 
   const sections = new Map<string, number>()
   for (const student of course.students) {
@@ -47,7 +51,20 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Exams" subtitle={`${course.exams.length} in this course`} />
+            <CardHeader
+              title="Exams"
+              subtitle={`${course.exams.length} in this course`}
+              action={
+                gradedRuns.length > 0 ? (
+                  <a
+                    href={`/api/courses/${course.id}/graded-exams.zip`}
+                    className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Download graded exams (ZIP)
+                  </a>
+                ) : null
+              }
+            />
             {course.exams.length === 0 ? (
               <Empty>No exams yet.</Empty>
             ) : (

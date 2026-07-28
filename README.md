@@ -150,6 +150,31 @@ Note that a queue using a generic PostScript driver exposes no finishing at all
 (`lpoptions -p <printer> -l | grep -i staple` returns nothing), which is fine under
 a release system since the choice happens at the device.
 
+## Handing back graded exams
+
+**Download graded exams (ZIP)** on the course page produces one folder per student,
+each containing a PDF of their graded exam:
+
+```
+Abebe-Amanuel-904317430/Exam-1-graded.pdf
+Abburu-Ananya-904317044/Exam-1-graded.pdf
+```
+
+Each report shows the questions **in the order that student saw them**, with their
+own variation's wording, every choice marked as chosen and/or correct, the verdict
+and points per question, and the raw value Gradescope read. It also records which
+authored question each position came from (`Q11B`), which is what you need when a
+student disputes one and you have to find it in the bank.
+
+Where an exam has been generated and graded more than once, only the most recently
+graded run is included; superseded runs would otherwise produce near-identical PDFs
+with nothing to say which one counts. Students with no scanned sheet still get a
+folder and a one-page report recording that, so the ZIP accounts for the whole
+roster.
+
+The archive is built as it downloads rather than assembled first — a 286-student
+course is about 80 MB and takes around ten seconds.
+
 ## Deleting things
 
 Courses, exams, and generation runs can each be deleted from their own page. Deletes

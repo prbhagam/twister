@@ -20,11 +20,15 @@ const KATEX_DIST = path.join(process.cwd(), 'node_modules', 'katex', 'dist')
  * can be loaded over file:// and KaTeX's relative font URLs resolve. Inlining the
  * ~1 MB of woff2 into every student's HTML instead would dominate the run.
  */
+export async function stageKatex(assetsDir: string): Promise<void> {
+  await cp(path.join(KATEX_DIST, 'katex.min.css'), path.join(assetsDir, 'katex.min.css'))
+  await cp(path.join(KATEX_DIST, 'fonts'), path.join(assetsDir, 'fonts'), { recursive: true })
+}
+
 export async function stageRenderAssets(dir: string): Promise<string> {
   const assetsDir = path.join(dir, '.render')
   await mkdir(assetsDir, { recursive: true })
-  await cp(path.join(KATEX_DIST, 'katex.min.css'), path.join(assetsDir, 'katex.min.css'))
-  await cp(path.join(KATEX_DIST, 'fonts'), path.join(assetsDir, 'fonts'), { recursive: true })
+  await stageKatex(assetsDir)
 
   const shell = path.join(assetsDir, 'shell.html')
   await writeFile(shell, buildShellHtml('katex.min.css'), 'utf8')
