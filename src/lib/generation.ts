@@ -69,7 +69,7 @@ export async function createRun(params: {
   }
 
   const students = (
-    await prisma.student.findMany({ where: { courseId: exam.courseId }, orderBy: { lastName: 'asc' } })
+    await prisma.student.findMany({ where: { courseId: exam.courseId, droppedAt: null }, orderBy: { lastName: 'asc' } })
   ).filter((s) => {
     if (params.sections.length === 0) return true
     const sections = JSON.parse(s.sections) as string[]

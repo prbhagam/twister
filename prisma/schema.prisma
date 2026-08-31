@@ -193,6 +193,12 @@ model Student {
   sections  String   @default("[]") // JSON array of normalized section codes
   role      String   @default("Student")
   createdAt DateTime @default(now())
+  // Set when a re-import no longer finds the student in the source roster: they
+  // dropped. Never a hard delete — StudentExam cascades from Student, so deleting
+  // a dropped student would erase exams they already sat and grades already
+  // recorded. Dropped students are filtered out of rosters, counts, and
+  // generation; a student who re-enrols has this cleared on the next import.
+  droppedAt DateTime?
 
   course       Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
   import       RosterImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
@@ -202,6 +208,7 @@ model Student {
   @@unique([courseId, username])
   @@index([courseId, lastName])
   @@index([courseId, canvasUserId])
+  @@index([courseId, droppedAt])
 }
 
 // ---------------------------------------------------------------------- run side

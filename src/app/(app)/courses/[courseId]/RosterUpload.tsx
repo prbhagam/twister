@@ -42,6 +42,17 @@ export function RosterUpload({ courseId }: { courseId: string }) {
               : 'nobody'}
             . Sections: {state.sections?.map((s) => `${s.label} (${s.count})`).join(', ')}.
           </p>
+          {state.dropped || state.restored ? (
+            <p className="mt-1">
+              {state.dropped
+                ? `Removed ${state.dropped} student${state.dropped === 1 ? '' : 's'} no longer on this roster — their existing graded exams are kept.`
+                : null}
+              {state.dropped && state.restored ? ' ' : null}
+              {state.restored
+                ? `Restored ${state.restored} previously removed student${state.restored === 1 ? '' : 's'}.`
+                : null}
+            </p>
+          ) : null}
         </Notice>
       ) : null}
     </div>

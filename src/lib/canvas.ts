@@ -37,19 +37,38 @@ export interface CanvasUserProfile {
   login_id?: string
   sis_user_id?: string
   primary_email?: string
+  email?: string
 }
 
-export async function fetchCanvasRoster(canvasCourseId: string): Promise<CanvasEnrollment[]> {
-  let url: string | null = `/api/v1/courses/${encodeURIComponent(canvasCourseId)}/enrollments?type[]=StudentEnrollment&state[]=active&include[]=user&per_page=100`
-  const rows: CanvasEnrollment[] = []
+async function canvasPages<T>(firstUrl: string, what: string): Promise<T[]> {
+  let url: string | null = firstUrl
+  const rows: T[] = []
   while (url) {
     const response = await canvasFetch(url)
     const page: unknown = await response.json()
-    if (!Array.isArray(page)) throw new Error('Canvas returned an unexpected roster response.')
-    rows.push(...page.filter((item): item is CanvasEnrollment => Boolean(item && typeof item === 'object')))
+    if (!Array.isArray(page)) throw new Error(`Canvas returned an unexpected ${what} response.`)
+    rows.push(...page.filter((item): item is T => Boolean(item && typeof item === 'object')))
     url = nextLink(response.headers.get('link'))
   }
   return rows
+}
+
+export async function fetchCanvasRoster(canvasCourseId: string): Promise<CanvasEnrollment[]> {
+  return canvasPages<CanvasEnrollment>(
+    `/api/v1/courses/${encodeURIComponent(canvasCourseId)}/enrollments?type[]=StudentEnrollment&state[]=active&include[]=user&per_page=100`,
+    'roster',
+  )
+}
+
+/** Enrollment `user` objects omit the login/email fields, and `/users/:id/profile`
+ * is 403 for anyone without account-admin rights — a teacher token can only read
+ * its own profile. The course users list, however, honours `include[]=email` for
+ * every student a teacher can see, so it is the reliable identity source. */
+export async function fetchCanvasCourseUsers(canvasCourseId: string): Promise<CanvasUserProfile[]> {
+  return canvasPages<CanvasUserProfile>(
+    `/api/v1/courses/${encodeURIComponent(canvasCourseId)}/users?enrollment_type[]=student&enrollment_state[]=active&include[]=email&per_page=100`,
+    'course users',
+  )
 }
 
 /** Enrollment responses can omit login/SIS fields even when the token is allowed

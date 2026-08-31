@@ -19,7 +19,9 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
     where: { id: courseId },
     include: {
       exams: { where: { archivedAt: null }, orderBy: { updatedAt: 'desc' }, include: { _count: { select: { questions: true, runs: true } } } },
-      students: { orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] },
+      // Dropped students stay in the database so their graded exams survive, but
+      // they are off the roster: excluded from the table and the section counts.
+      students: { where: { droppedAt: null }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] },
       rosterImports: { where: { archivedAt: null }, orderBy: { createdAt: 'desc' }, take: 1 },
     },
   })
@@ -27,6 +29,10 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
 
   // Drives the ZIP button: hidden until something in the course is actually graded.
   const gradedRuns = await gradedRunsForCourse(course.id)
+
+  // The delete warning counts dropped students too — deleting the course destroys
+  // their rows and graded exams as well, so the roster count would understate it.
+  const totalStudents = await prisma.student.count({ where: { courseId: course.id } })
 
   const sections = new Map<string, number>()
   for (const student of course.students) {
@@ -175,7 +181,7 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
             action={deleteCourse}
             hiddenFields={{ courseId: course.id }}
             label="Delete this course"
-            description={`This permanently deletes ${course.name}: ${course.students.length} students, ${course.exams.length} exam(s), every generation run and grade, and all generated PDFs. This cannot be undone.`}
+            description={`This permanently deletes ${course.name}: ${totalStudents} students, ${course.exams.length} exam(s), every generation run and grade, and all generated PDFs. This cannot be undone.`}
             confirmHint="To confirm, type the course name:"
             confirmWord={course.name}
             buttonText="Delete course permanently"

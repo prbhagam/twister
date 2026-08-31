@@ -13,7 +13,7 @@ export default async function DashboardPage() {
     where: user.role === 'OWNER' ? { archivedAt: null } : { archivedAt: null, memberships: { some: { userId: user.id, active: true } } },
     orderBy: { createdAt: 'desc' },
     include: {
-      _count: { select: { exams: true, students: true } },
+      _count: { select: { exams: true, students: { where: { droppedAt: null } } } },
       exams: { orderBy: { updatedAt: 'desc' }, take: 4 },
     },
   })
@@ -28,7 +28,7 @@ export default async function DashboardPage() {
         : { archivedAt: { not: null }, memberships: { some: { userId: user.id, active: true } } },
     orderBy: { archivedAt: 'desc' },
     include: {
-      _count: { select: { exams: true, students: true } },
+      _count: { select: { exams: true, students: { where: { droppedAt: null } } } },
       exams: { select: { _count: { select: { runs: true } } } },
     },
   })
