@@ -124,9 +124,11 @@ export async function buildPracticeExamPdf(examId: string, studentName: string):
       })
 
       const renderExam: RenderExam = {
-        examTitle: exam.title,
+        // The letter marks the exam itself ("Practice Exam A"), not the sample
+        // student, since every variant is nominally sat by the same person.
+        examTitle: `${exam.title} ${label}`,
         courseName,
-        studentName: `${name} — Variant ${label}`,
+        studentName: name,
         gtId,
         traceCode: layout.traceCode,
         instructionsHtml,
