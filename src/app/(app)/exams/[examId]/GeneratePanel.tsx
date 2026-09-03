@@ -1,19 +1,28 @@
 'use client'
 
+import Link from 'next/link'
 import { useActionState, useState } from 'react'
 import { Button, Notice } from '@/components/ui'
 import { startGeneration, type GenerateState } from './actions'
 
 export function GeneratePanel({
   examId,
+  courseId,
   sections,
   totalStudents,
+  excludedSections,
+  excludedStudents,
   blocked,
   distinctExams,
 }: {
   examId: string
+  courseId: string
+  /** Only the sections this exam may be generated for; course-level exclusions are already filtered out. */
   sections: { code: string; label: string; count: number }[]
+  /** Roster size after course-level exclusions. */
   totalStudents: number
+  excludedSections: number
+  excludedStudents: number
   blocked: boolean
   distinctExams: string
 }) {
@@ -39,7 +48,11 @@ export function GeneratePanel({
           Sections {selected.length === 0 ? '(all)' : `(${selected.length} selected)`}
         </p>
         {sections.length === 0 ? (
-          <p className="text-sm text-slate-500">No roster imported for this course yet.</p>
+          <p className="text-sm text-slate-500">
+            {excludedSections > 0
+              ? 'Every section on this roster is excluded at the course level.'
+              : 'No roster imported for this course yet.'}
+          </p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {sections.map((section) => {
@@ -81,6 +94,16 @@ export function GeneratePanel({
           Each run freezes a copy of every question, so editing questions afterwards cannot change
           what has already been printed.
         </p>
+        {excludedSections > 0 ? (
+          <p className="mt-1">
+            {excludedStudents} student{excludedStudents === 1 ? '' : 's'} in {excludedSections}{' '}
+            excluded section{excludedSections === 1 ? '' : 's'} are left out.{' '}
+            <Link href={`/courses/${courseId}`} className="underline">
+              Change on the course
+            </Link>
+            .
+          </p>
+        ) : null}
       </div>
 
       <Button type="submit" disabled={pending || blocked || targetCount === 0}>

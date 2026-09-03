@@ -171,6 +171,10 @@ export async function updateExam(formData: FormData) {
   // always a mistake, so it is locked; existing runs keep their own snapshot either
   // way, but a new run would no longer match the printed sheets.
   const lockIdentity = exam._count.runs > 0
+  // Same lock for the practice flag, and for the same reason the field is disabled
+  // in the form: a disabled checkbox submits nothing at all, so without this a
+  // locked exam's settings save would read back as unchecked and flip it off.
+  const lockPracticeExam = exam._count.runs > 0
 
   await prisma.exam.update({
     where: { id: examId },
@@ -179,6 +183,7 @@ export async function updateExam(formData: FormData) {
       instructorSeed: String(formData.get('instructorSeed') ?? '').trim(),
       instructions: String(formData.get('instructions') ?? '').trim() || null,
       ...(lockIdentity ? {} : { identityField }),
+      ...(lockPracticeExam ? {} : { isPracticeExam: formData.get('isPracticeExam') === 'on' }),
     },
   })
   revalidatePath(`/exams/${examId}`)

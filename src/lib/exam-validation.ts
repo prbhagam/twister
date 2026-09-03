@@ -9,6 +9,7 @@ export interface ValidationIssue {
 
 export interface ValidatableExam {
   instructorSeed: string
+  isPracticeExam?: boolean
   questions: {
     id: string
     order: number
@@ -143,6 +144,21 @@ export function validateExam(exam: ValidatableExam): ValidationIssue[] {
         level: 'warning',
         questionId: question.id,
         message: `${where}'s variations have differing choice counts (${[...choiceCounts].sort().join(', ')}), so some students get more options than others.`,
+      })
+    }
+  }
+
+  // A practice exam has no per-student roster to average over: "variant A" must mean
+  // the same slot on every question, which only holds if every question offers the
+  // same number of variations.
+  if (exam.isPracticeExam) {
+    const counts = new Set(exam.questions.map((q) => q.variations.length))
+    if (counts.size > 1) {
+      issues.push({
+        level: 'error',
+        message:
+          `Practice exams need every question to have the same number of variations ` +
+          `(found ${[...counts].sort((a, b) => a - b).join(', ')}). Add or remove variations so they match.`,
       })
     }
   }

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 Generates samples/sample-exam-50-questions.csv — a 50-question CS 1301 style bank,
-2-3 variations each, in TWISTER's whole-exam import format.
+2 variations each (kept uniform so the bank also works as a practice exam, which
+requires every question to have the same number of variations), in TWISTER's
+whole-exam import format.
 
 Kept as a generator rather than a hand-edited CSV so the file stays valid against
 the importer: every question is checked for a unique correct answer, 2-5 choices,
@@ -35,12 +37,10 @@ QUESTIONS = [
     # ---- 1-5: types and literals ----
     q(1,
       v("What is the type of `3 / 1` in Python 3?", ["`int`", "`float`", "`str`", "`bool`", NOTA], 1),
-      v("What is the type of `3 // 1`?", ["`int`", "`float`", "`str`", "`bool`", NOTA], 0),
-      v("What is the type of `3 == 1`?", ["`int`", "`float`", "`str`", "`bool`", NOTA], 3)),
+      v("What is the type of `3 // 1`?", ["`int`", "`float`", "`str`", "`bool`", NOTA], 0)),
     q(1,
       v("What does `int('7') + 1` evaluate to?", ["`8`", "`'71'`", "`71`", "`TypeError`", "`ValueError`"], 0),
-      v("What does `'7' + 1` evaluate to?", ["`8`", "`'71'`", "`71`", "`TypeError`", "`ValueError`"], 3),
-      v("What does `'7' * 2` evaluate to?", ["`14`", "`'77'`", "`'7 7'`", "`TypeError`", "`ValueError`"], 1)),
+      v("What does `'7' + 1` evaluate to?", ["`8`", "`'71'`", "`71`", "`TypeError`", "`ValueError`"], 3)),
     q(1,
       v("What does `float('3.5')` return?", ["`3.5`", "`'3.5'`", "`3`", "`ValueError`", "`TypeError`"], 0),
       v("What does `int('3.5')` return?", ["`3.5`", "`3`", "`4`", "`ValueError`", "`TypeError`"], 3)),
@@ -54,8 +54,7 @@ QUESTIONS = [
     # ---- 6-12: operators and expressions ----
     q(1,
       v("What does `7 // 2` evaluate to?", ["`3`", "`3.5`", "`4`", "`1`", "`TypeError`"], 0),
-      v("What does `7 % 2` evaluate to?", ["`0`", "`1`", "`3`", "`3.5`", "`TypeError`"], 1),
-      v("What does `7 / 2` evaluate to?", ["`3`", "`3.5`", "`4`", "`1`", "`TypeError`"], 1)),
+      v("What does `7 % 2` evaluate to?", ["`0`", "`1`", "`3`", "`3.5`", "`TypeError`"], 1)),
     q(1,
       v("What does `-7 // 2` evaluate to?", ["`-3`", "`-4`", "`-3.5`", "`3`", "`4`"], 1),
       v("What does `-7 % 3` evaluate to?", ["`-1`", "`1`", "`2`", "`-2`", "`0`"], 2)),
@@ -78,8 +77,7 @@ QUESTIONS = [
     # ---- 13-19: strings ----
     q(1,
       v("What does `'computing'[0:4]` evaluate to?", ["`'comp'`", "`'compu'`", "`'omp'`", "`'c'`", "`IndexError`"], 0),
-      v("What does `'computing'[-3:]` evaluate to?", ["`'ing'`", "`'ting'`", "`'ng'`", "`'comput'`", "`IndexError`"], 0),
-      v("What does `'computing'[::2]` evaluate to?", ["`'cmuig'`", "`'optn'`", "`'computing'`", "`'gnitupmoc'`", "`TypeError`"], 0)),
+      v("What does `'computing'[-3:]` evaluate to?", ["`'ing'`", "`'ting'`", "`'ng'`", "`'comput'`", "`IndexError`"], 0)),
     q(1,
       v("What does `'abc'[::-1]` evaluate to?", ["`'cba'`", "`'abc'`", "`'a'`", "`''`", "`IndexError`"], 0),
       v("What does `'abc'[3]` evaluate to?", ["`'c'`", "`''`", "`None`", "`IndexError`", "`KeyError`"], 3)),
@@ -102,8 +100,7 @@ QUESTIONS = [
     # ---- 20-27: lists ----
     q(1,
       v("What does the following print?\n\n" + code("xs = [1, 2, 3]\nprint(len(xs))"), ["`1`", "`2`", "`3`", "`TypeError`", NOTA], 2),
-      v("What does the following print?\n\n" + code("xs = [4, 5]\nprint(len(xs))"), ["`1`", "`2`", "`3`", "`TypeError`", NOTA], 1),
-      v("What does the following print?\n\n" + code("xs = []\nprint(len(xs))"), ["`0`", "`1`", "`None`", "`TypeError`", NOTA], 0)),
+      v("What does the following print?\n\n" + code("xs = [4, 5]\nprint(len(xs))"), ["`1`", "`2`", "`3`", "`TypeError`", NOTA], 1)),
     q(1,
       v("What does the following print?\n\n" + code("a = [1, 2]\nb = a\nb.append(3)\nprint(len(a))"), ["`1`", "`2`", "`3`", "`4`", "`TypeError`"], 2),
       v("What does the following print?\n\n" + code("a = [1, 2]\nb = a[:]\nb.append(3)\nprint(len(a))"), ["`1`", "`2`", "`3`", "`4`", "`TypeError`"], 1)),
@@ -129,8 +126,7 @@ QUESTIONS = [
     # ---- 28-33: loops and ranges ----
     q(1,
       v("How many times does the body of this loop run?\n\n" + code("for i in range(2, 10, 3):\n    print(i)"), ["`2`", "`3`", "`4`", "`8`", NOTA], 1),
-      v("How many times does the body of this loop run?\n\n" + code("for i in range(0, 10, 2):\n    print(i)"), ["`2`", "`4`", "`5`", "`10`", NOTA], 2),
-      v("How many times does the body of this loop run?\n\n" + code("for i in range(5):\n    print(i)"), ["`4`", "`5`", "`6`", "`0`", NOTA], 1)),
+      v("How many times does the body of this loop run?\n\n" + code("for i in range(0, 10, 2):\n    print(i)"), ["`2`", "`4`", "`5`", "`10`", NOTA], 2)),
     q(1,
       v("What is the last value printed?\n\n" + code("for i in range(3):\n    print(i)"), ["`0`", "`1`", "`2`", "`3`", "nothing is printed"], 2),
       v("What is the first value printed?\n\n" + code("for i in range(1, 4):\n    print(i)"), ["`0`", "`1`", "`2`", "`4`", "nothing is printed"], 1)),
@@ -167,8 +163,7 @@ QUESTIONS = [
     # ---- 39-44: functions and scope ----
     q(1,
       v("What does `f(3)` return?\n\n" + code("def f(n):\n    if n > 2:\n        n = n * 2\n    return n"), ["`3`", "`6`", "`None`", "`2`", NOTA], 1),
-      v("What does `f(1)` return?\n\n" + code("def f(n):\n    if n > 2:\n        n = n * 2\n    return n"), ["`1`", "`2`", "`None`", "`0`", NOTA], 0),
-      v("What does `f(4)` return?\n\n" + code("def f(n):\n    if n > 2:\n        n = n * 2"), ["`4`", "`8`", "`None`", "`2`", NOTA], 2)),
+      v("What does `f(1)` return?\n\n" + code("def f(n):\n    if n > 2:\n        n = n * 2\n    return n"), ["`1`", "`2`", "`None`", "`0`", NOTA], 0)),
     q(1,
       v("What does the following print?\n\n" + code("x = 10\n\ndef f():\n    x = 20\n\nf()\nprint(x)"), ["`10`", "`20`", "`None`", "`NameError`", NOTA], 0),
       v("What does the following print?\n\n" + code("x = 10\n\ndef f():\n    global x\n    x = 20\n\nf()\nprint(x)"), ["`10`", "`20`", "`None`", "`NameError`", NOTA], 1)),

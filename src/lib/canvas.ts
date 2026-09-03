@@ -53,6 +53,28 @@ async function canvasPages<T>(firstUrl: string, what: string): Promise<T[]> {
   return rows
 }
 
+export interface CanvasSection {
+  id?: number | string
+  name?: string
+  sis_section_id?: string
+}
+
+/**
+ * The course's sections, used to turn the opaque `course_section_id` on an
+ * enrollment into the code humans use.
+ *
+ * Canvas's section `name` is the full GT registrar code —
+ * "202608/CS/1301/O1/87196" — the same shape a GT roster CSV carries, so both
+ * import paths land on identical codes and `sectionLabel` renders both as "O1".
+ * `sis_section_id` is only "term/CRN" and would not survive that.
+ */
+export async function fetchCanvasSections(canvasCourseId: string): Promise<CanvasSection[]> {
+  return canvasPages<CanvasSection>(
+    `/api/v1/courses/${encodeURIComponent(canvasCourseId)}/sections?per_page=100`,
+    'sections',
+  )
+}
+
 export async function fetchCanvasRoster(canvasCourseId: string): Promise<CanvasEnrollment[]> {
   return canvasPages<CanvasEnrollment>(
     `/api/v1/courses/${encodeURIComponent(canvasCourseId)}/enrollments?type[]=StudentEnrollment&state[]=active&include[]=user&per_page=100`,

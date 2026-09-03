@@ -5,9 +5,10 @@ import { prisma } from '@/lib/db'
 import { parseRoster } from '@/lib/roster'
 import { audit } from '@/lib/audit'
 import { requireCoursePermission } from '@/lib/authorization'
-import { fetchCanvasCourseUsers, fetchCanvasRoster, fetchCanvasUserProfile } from '@/lib/canvas'
+import { fetchCanvasCourseUsers, fetchCanvasRoster, fetchCanvasSections, fetchCanvasUserProfile } from '@/lib/canvas'
 import { reconcileDroppedStudents } from '@/lib/roster-sync'
-import { normalizeSections, splitName } from '@/lib/roster'
+import { normalizeSections, sectionLabel, splitName } from '@/lib/roster'
+import { parseSectionCodes } from '@/lib/sections'
 
 export interface RosterImportState {
   ok?: boolean
@@ -35,6 +36,17 @@ export async function importCanvasRoster(
   } catch (error) {
     return { errors: [error instanceof Error ? error.message : 'Could not download the Canvas roster.'] }
   }
+
+  // Enrollments name their section only by numeric id. The sections endpoint maps
+  // that id to the registrar code ("202608/CS/1301/O1/87196"), which is what the
+  // roster CSV stores and what `sectionLabel` renders as "O1". Storing the bare id
+  // instead would leave every section in the UI labelled with a meaningless number.
+  const sectionNames = new Map<string, string>()
+  try {
+    for (const section of await fetchCanvasSections(canvasCourseId)) {
+      if (section.id != null && section.name?.trim()) sectionNames.set(String(section.id), section.name.trim())
+    }
+  } catch { /* fall back to the raw section id below */ }
 
   // Enrollments carry the section, but never the login/email, so pair them with
   // the course users list — the only identity source a teacher token can read for
@@ -65,7 +77,8 @@ export async function importCanvasRoster(
     const name = String(identity.name ?? identity.sortable_name ?? '').trim()
     if (!gtId || !loginId || !name) { incomplete++; continue }
     const parsedName = splitName(identity.sortable_name ?? name)
-    const sections = enrollment.course_section_id ? normalizeSections(String(enrollment.course_section_id)) : []
+    const sectionId = enrollment.course_section_id != null ? String(enrollment.course_section_id) : ''
+    const sections = sectionId ? normalizeSections(sectionNames.get(sectionId) ?? sectionId) : []
     const existing = byGtId.get(gtId)
     if (existing) {
       for (const section of sections) if (!existing.sections.includes(section)) existing.sections.push(section)
@@ -98,7 +111,7 @@ export async function importCanvasRoster(
   })
   const sectionCounts = new Map<string, number>()
   for (const student of students) for (const section of student.sections) sectionCounts.set(section, (sectionCounts.get(section) ?? 0) + 1)
-  const sections = [...sectionCounts].map(([code, count]) => ({ code, label: code, count }))
+  const sections = [...sectionCounts].map(([code, count]) => ({ code, label: sectionLabel(code), count }))
   await audit({ actorUserId: user.id, action: 'roster.canvas_imported', entityType: 'roster_import', entityId: record.id, courseId, metadata: { imported: students.length, canvasCourseId, ...reconciliation } })
   revalidatePath(`/courses/${courseId}`)
   return {
@@ -189,4 +202,113 @@ export async function importRoster(
     errors: result.errors,
     ...reconciliation,
   }
+}
+
+export interface SectionSyncState {
+  ok?: boolean
+  /** Sections whose stored code was rewritten from a bare Canvas id to the registrar code. */
+  relabelled?: number
+  /** Students whose stored section list changed as a result. */
+  studentsUpdated?: number
+  found?: number
+  error?: string
+}
+
+/**
+ * Refreshes section names from Canvas without touching the roster.
+ *
+ * Rosters imported before sections were resolvable stored the bare numeric
+ * `course_section_id`, which renders as "559177" instead of "O1". This rewrites
+ * those codes in place — on students and on the course's exclusion list — so the
+ * labels become readable without re-importing the whole roster, which would
+ * otherwise be the only way to fix them.
+ */
+export async function syncCanvasSections(
+  _prev: SectionSyncState,
+  formData: FormData,
+): Promise<SectionSyncState> {
+  const courseId = String(formData.get('courseId'))
+  const user = await requireCoursePermission(courseId, 'course:manage')
+  const course = await prisma.course.findUniqueOrThrow({ where: { id: courseId } })
+  const canvasCourseId = (course.canvasCourseId ?? '').trim()
+  if (!/^\d+$/.test(canvasCourseId)) {
+    return { error: 'This course has no Canvas course ID yet. Import the roster from Canvas first.' }
+  }
+
+  let sections
+  try {
+    sections = await fetchCanvasSections(canvasCourseId)
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not download the Canvas section list.' }
+  }
+
+  const rename = new Map<string, string>()
+  for (const section of sections) {
+    const name = section.name?.trim()
+    if (section.id != null && name) rename.set(String(section.id), name)
+  }
+  if (rename.size === 0) return { error: `Canvas returned ${sections.length} section(s), none of them named.` }
+
+  const students = await prisma.student.findMany({ where: { courseId }, select: { id: true, sections: true } })
+  let studentsUpdated = 0
+  const relabelled = new Set<string>()
+  for (const student of students) {
+    const current = parseSectionCodes(student.sections)
+    // Dedupe: a student listed under both the id and the name form of one section
+    // must not end up in it twice.
+    const mapped = [...new Set(current.map((code) => rename.get(code) ?? code))].sort()
+    if (mapped.join(' ') === current.join(' ')) continue
+    for (const code of current) if (rename.has(code)) relabelled.add(code)
+    await prisma.student.update({ where: { id: student.id }, data: { sections: JSON.stringify(mapped) } })
+    studentsUpdated++
+  }
+
+  // The exclusion list stores the same codes, so it has to move with them or an
+  // excluded section would silently stop being excluded.
+  const excluded = parseSectionCodes(course.excludedSections)
+  const remapped = [...new Set(excluded.map((code) => rename.get(code) ?? code))].sort()
+  if (remapped.join(' ') !== excluded.join(' ')) {
+    await prisma.course.update({ where: { id: courseId }, data: { excludedSections: JSON.stringify(remapped) } })
+  }
+
+  await audit({
+    actorUserId: user.id,
+    action: 'course.sections_synced',
+    entityType: 'course',
+    entityId: courseId,
+    courseId,
+    metadata: { canvasCourseId, sections: rename.size, studentsUpdated },
+  })
+  revalidatePath(`/courses/${courseId}`)
+  return { ok: true, found: rename.size, relabelled: relabelled.size, studentsUpdated }
+}
+
+/**
+ * Sets the sections withheld from every exam in this course.
+ *
+ * Only recorded here; the filter is applied when a run is created, so changing it
+ * never rewrites a run that has already been generated.
+ */
+export async function updateExcludedSections(formData: FormData) {
+  const courseId = String(formData.get('courseId'))
+  const user = await requireCoursePermission(courseId, 'course:manage')
+
+  // Accept only codes that exist on the roster, so a stale form cannot write
+  // exclusions for sections this course has never seen.
+  const known = new Set<string>()
+  for (const student of await prisma.student.findMany({ where: { courseId }, select: { sections: true } })) {
+    for (const code of parseSectionCodes(student.sections)) known.add(code)
+  }
+  const excluded = [...new Set(formData.getAll('excluded').map(String).filter((code) => known.has(code)))].sort()
+
+  await prisma.course.update({ where: { id: courseId }, data: { excludedSections: JSON.stringify(excluded) } })
+  await audit({
+    actorUserId: user.id,
+    action: 'course.sections_excluded',
+    entityType: 'course',
+    entityId: courseId,
+    courseId,
+    metadata: { excluded },
+  })
+  revalidatePath(`/courses/${courseId}`)
 }

@@ -259,6 +259,10 @@ export async function startGeneration(_prev: GenerateState, formData: FormData):
 
   let runId: string
   try {
+    const target = await prisma.exam.findUniqueOrThrow({ where: { id: examId }, select: { isPracticeExam: true } })
+    if (target.isPracticeExam) {
+      return { error: 'This exam is marked as a practice exam — generate practice papers instead of a roster run.' }
+    }
     const unapproved = await prisma.question.count({ where: { examId, archivedAt: null, workflowStatus: { not: 'APPROVED' } } })
     if (unapproved) return { error: `${unapproved} question(s) are not approved.` }
     ;({ runId } = await createRun({ examId, sections, label }))
