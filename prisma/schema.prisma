@@ -107,15 +107,22 @@ model Exam {
   // requires every question to carry the same number of variations so "variant A"
   // means the same thing across the whole exam.
   isPracticeExam     Boolean   @default(false)
+  // Link to the instructor's Google Sheet tracking in-person session signups.
+  // Saved as soon as it is pasted, even if the first sync then fails, so a
+  // transient fetch error never erases what was entered. See the signup side below.
+  signupSheetUrl     String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   lifecycle          String    @default("DRAFT") // DRAFT | READY_FOR_REVIEW | APPROVED | GENERATED | LOCKED | GRADED | ARCHIVED
   archivedAt         DateTime?
   archivedById       String?
 
-  course    Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  questions Question[]
-  runs      GenerationRun[]
+  course        Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  questions     Question[]
+  runs          GenerationRun[]
+  signupImports SignupImport[]
+  signupBuckets SignupBucket[]
+  signupRows    SignupRow[]
 
   @@index([courseId])
   @@index([archivedAt])
@@ -216,12 +223,108 @@ model Student {
   course       Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
   import       RosterImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
   studentExams StudentExam[]
+  signupRows   SignupRow[]
 
   @@unique([courseId, gtId])
   @@unique([courseId, username])
   @@index([courseId, lastName])
   @@index([courseId, canvasUserId])
   @@index([courseId, droppedAt])
+}
+
+// ----------------------------------------------------------------- signup side
+//
+// Session sign-ups live outside TWISTER — students pick a slot in an external
+// Google Sheet the instructor maintains. This side syncs that sheet in: every
+// non-dropped roster student ends up pointing at exactly one SignupBucket (a
+// session, an exemption reason, or "not signed up"), refreshed in place on each
+// sync rather than accumulated as history. Nothing here is trusted until at
+// least one SignupImport has succeeded.
+
+// One attempt to sync Exam.signupSheetUrl. Kept as history, mirroring
+// RosterImport, so a bad sync (wrong URL, sharing turned off) leaves a visible
+// record instead of the dashboard silently going stale with no explanation.
+model SignupImport {
+  id           String   @id @default(cuid())
+  examId       String
+  importedAt   DateTime @default(now())
+  rowCount     Int      @default(0) // rows read from the sheet, before matching
+  matchedCount Int      @default(0) // rows matched to a roster Student
+  // JSON: { unmatched: [{gtId,canvasUserId,name,signupSlot}], warnings: string[] }
+  detail       String   @default("{}")
+  // Set when the fetch/parse failed outright (bad URL, sheet not link-shared, no
+  // header row); rowCount/matchedCount stay 0 and nothing downstream was touched.
+  error        String?
+  isActive     Boolean  @default(true)
+  uploadedById String?
+
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@index([examId, importedAt])
+}
+
+// A place a student's signup lands: one in-person session, one distinct
+// exemption sentence, or the single "not signed up" bucket. Upserted by
+// (examId, kind, naturalKey) so re-syncing refreshes a bucket in place instead
+// of duplicating it — and so an instructor's edited label/capacity survives a
+// bucket that briefly has zero students, rather than being deleted and recreated.
+model SignupBucket {
+  id         String    @id @default(cuid())
+  examId     String
+  kind       String // "session" | "exception" | "not_signed_up"
+  // Idempotency key: for a session, normalized "date|HH:mm|room" (so
+  // "10/27/2026" and "10/27/26" collapse to the same bucket); for an exception,
+  // the sentence lowercased and whitespace-collapsed; for not_signed_up, the
+  // literal string "not_signed_up" (there is only ever one per exam).
+  naturalKey String
+  // Verbatim sheet text: the session string, the exemption sentence, or
+  // "Not signed up". Doubles, sanitized, as the ZIP folder name for sessions and
+  // not_signed_up — it already carries date, time, and location.
+  rawLabel   String
+  sessionAt  DateTime? // parsed, session buckets only: for sorting + the Slots-tab lookup
+  location   String? // parsed, session buckets only: for the Slots-tab lookup
+  // Instructor-editable short name. Exception buckets only — the raw sentences
+  // are too long to use as a folder name directly. Null until edited or first
+  // auto-derived at sync time; the ZIP export falls back to rawLabel if not set.
+  label      String?
+  // Session buckets only, from the Slots tab's Capacity column. Refreshed on
+  // every sync where a match is found; left untouched otherwise, so a manual
+  // override or a prior sync's value survives a gap in the Slots tab.
+  capacity   Int?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  exam Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
+  rows SignupRow[]
+
+  @@unique([examId, kind, naturalKey])
+  @@index([examId, kind])
+}
+
+// One student's current signup state for one exam. Upserted by (examId,
+// studentId): a re-sync overwrites this in place, so "which bucket is this
+// student in right now" is always a single row, never a history to reduce.
+// Every non-dropped roster student gets exactly one of these after any sync —
+// a student absent from the sheet entirely is pointed at the not_signed_up
+// bucket the same as one whose row literally says "Not signed up".
+model SignupRow {
+  id            String   @id @default(cuid())
+  examId        String
+  studentId     String
+  bucketId      String
+  rawSignupSlot String // exact SignupSlot cell text, kept for the dashboard tooltip
+  // "gtId" | "canvasUserId" — which identifier matched, so a mismatch is
+  // diagnosable. Null means no sheet row matched this student at all.
+  matchedOn     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  exam    Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  bucket  SignupBucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, studentId])
+  @@index([bucketId])
 }
 
 // ---------------------------------------------------------------------- run side

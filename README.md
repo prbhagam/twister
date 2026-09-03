@@ -184,6 +184,46 @@ roster.
 The archive is built as it downloads rather than assembled first — a 286-student
 course is about 80 MB and takes around ten seconds.
 
+## Session sign-ups
+
+For an in-person exam offered across several sessions, paste a link to the
+instructor's Google Sheet under **Sign-ups** on the exam page, then **Sync now**.
+The sheet must be shared as **Anyone with the link can view** — sync is a plain,
+unauthenticated fetch of the same CSV export a browser gets with no Google login,
+so nothing is ever stored on TWISTER's side but the URL itself.
+
+The sheet's first tab is expected to carry `GTID`, `FirstName`, `LastName`,
+`CanvasUserId`, and `SignupSlot` columns, one row per student. `SignupSlot` is
+read as one of three things:
+
+- **`Not signed up`** — and so is a student the roster has but the sheet doesn't
+  mention at all.
+- **`M/D/YYYY h:mm AM/PM (Location)`** — a session. A tab named **`Slots`**, with
+  `Date`, `Time`, `Room`, and `Capacity` columns, supplies each session's
+  capacity by matching on date, time, and room; syncing again always refreshes
+  capacity from that tab where a match exists, and otherwise leaves whatever is
+  already stored (a prior sync's value, or one typed in by hand) alone.
+- **Anything else** — grouped as an exception, by its exact text. There is no
+  fixed list of exception reasons; whatever text a course uses becomes its own
+  bucket. Give it a short label on the dashboard — the raw sentence is usually
+  too long to be a useful folder name.
+
+The dashboard shows every session (with a red badge once it's over capacity),
+every exception (with its student list and editable label), and everyone not
+signed up. Re-syncing always reflects the sheet as it is right now; nothing here
+is a history to reconcile.
+
+**Exams by session (ZIP)**, next to the other downloads on a completed run, sorts
+that run's already-generated PDFs into folders — one per session (named with its
+date, time, and location), one per exception (named by its label), and one for
+students who never signed up:
+
+```
+10-27-2026 1-35 PM (Scheller 101)/Afeworki-Lulya-903977463.pdf
+OMSCS Seminar/Altshuler-Roman-904205135.pdf
+Not signed up/Abanador-Alessandra-904246722.pdf
+```
+
 ## Deleting things
 
 Courses, exams, and generation runs can each be deleted from their own page. Each

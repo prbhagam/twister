@@ -202,11 +202,18 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
             <CardHeader title="Downloads" />
             <div className="space-y-2 px-5 py-4">
               {run.status === 'completed' ? (
-                <DownloadLink
-                  href={`/api/runs/${run.id}/print.pdf`}
-                  title="Print all exams (PDF)"
-                  note={`${run.studentCount} booklets, ordered by last name`}
-                />
+                <>
+                  <DownloadLink
+                    href={`/api/runs/${run.id}/print.pdf`}
+                    title="Print all exams (PDF)"
+                    note={`${run.studentCount} booklets, ordered by last name`}
+                  />
+                  <DownloadLink
+                    href={`/api/runs/${run.id}/by-session.zip`}
+                    title="Exams by session (ZIP)"
+                    note="One folder per signup session, plus not-signed-up and exceptions"
+                  />
+                </>
               ) : null}
               <DownloadLink
                 href={`/api/runs/${run.id}/answer-key.csv`}

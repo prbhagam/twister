@@ -58,14 +58,15 @@ export function studentsMissingIdentity<T extends IdentifiableStudent>(
 }
 
 /**
- * Every identifier a Gradescope export might carry for this student, lowercased.
- * Grading matches on any of them, so a roster keyed one way still grades against an
- * export keyed another.
+ * Every identifier an external export might carry for this student, lowercased.
+ * Grading (Gradescope) and the signup-sheet sync both match on any of these, so a
+ * roster keyed one way still matches an import keyed another.
  */
 export function matchKeys(student: {
   gtId?: string | null
   username?: string | null
   email?: string | null
+  canvasUserId?: string | null
 }): string[] {
   const keys = new Set<string>()
 
@@ -85,6 +86,9 @@ export function matchKeys(student: {
     keys.add(email.toLowerCase())
     keys.add(email.split('@')[0].toLowerCase())
   }
+
+  const canvasUserId = student.canvasUserId?.trim()
+  if (canvasUserId) keys.add(canvasUserId.toLowerCase())
 
   return [...keys]
 }

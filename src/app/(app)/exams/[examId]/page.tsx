@@ -203,6 +203,14 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
             </div>
           </Card>
 
+          <Card>
+            <CardHeader
+              title="Sign-ups"
+              subtitle={exam.signupSheetUrl ? 'Synced from a Google Sheet' : 'No sheet linked yet'}
+              action={<LinkButton href={`/exams/${exam.id}/signups`}>Open</LinkButton>}
+            />
+          </Card>
+
           {exam.isPracticeExam ? (
             <Card>
               <CardHeader
