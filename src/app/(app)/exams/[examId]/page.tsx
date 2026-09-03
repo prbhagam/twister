@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { validateExam } from '@/lib/exam-validation'
 import { IDENTITY_HINT, IDENTITY_LABEL, IDENTITY_FIELDS, parseIdentityField, studentsMissingIdentity } from '@/lib/identity'
 import { toPlainSummary } from '@/lib/markdown'
+import { practiceVariantLabels } from '@/lib/practice-exam'
 import { excludedStudentCount, parseSectionCodes, summarizeSections } from '@/lib/sections'
 import { distinctExamCount, formatBig } from '@/lib/seed'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label, LinkButton, Notice, Textarea } from '@/components/ui'
@@ -56,9 +57,9 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
   const generatableStudents = exam.course.students.length - excludedStudents
 
   // Only meaningful once the equal-variation-count check above has passed; when
-  // counts differ this is just the first question's count and `errors` already
-  // blocks the button.
-  const variantCount = exam.questions[0]?.variations.length ?? 0
+  // counts differ these are just the first question's variations and `errors`
+  // already blocks the buttons.
+  const variantLabels = practiceVariantLabels(exam.questions[0]?.variations ?? [])
 
   return (
     <div className="space-y-6">
@@ -207,7 +208,7 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
                 title="Generate practice exams"
                 subtitle="No roster, no grading — one PDF per variant, rendered from the live questions"
               />
-              <PracticeGeneratePanel examId={exam.id} variantCount={variantCount} blocked={errors.length > 0} />
+              <PracticeGeneratePanel examId={exam.id} variantLabels={variantLabels} blocked={errors.length > 0} />
             </Card>
           ) : (
             <Card>

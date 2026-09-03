@@ -13,6 +13,8 @@ export interface PracticeExamPdf {
   pdf: Uint8Array
   examTitle: string
   variantCount: number
+  /** Set when the PDF is a single variant rather than every variant merged. */
+  variantLabel?: string
 }
 
 /**
@@ -27,14 +29,29 @@ function sampleGtId(): string {
 }
 
 /**
- * Renders one PDF per variant combination — all of question 1's variation A with
- * all of question 2's variation A, and so on — merged into a single document.
+ * The label shown for each variant slot — "A", "B", … as authored on the first
+ * question, falling back to "1", "2", … if a label is blank. Every question is
+ * required to carry the same number of variations, so the first question's labels
+ * stand in for the whole exam.
+ */
+export function practiceVariantLabels(firstQuestionVariations: { label: string }[]): string[] {
+  return firstQuestionVariations.map((v, i) => v.label || String(i + 1))
+}
+
+/**
+ * Renders one variant combination of a practice exam — all of question 1's
+ * variation A with all of question 2's variation A, and so on — or, with no
+ * `variantLabel`, every variant merged into one document.
  *
  * Unlike a real generation run, this reads the live authoring content directly and
  * freezes nothing: there is no roster, no grading, and no answer key to keep in
  * sync, so the practice PDF should always reflect whatever is on the exam right now.
  */
-export async function buildPracticeExamPdf(examId: string, studentName: string): Promise<PracticeExamPdf> {
+export async function buildPracticeExamPdf(
+  examId: string,
+  studentName: string,
+  options: { variantLabel?: string } = {},
+): Promise<PracticeExamPdf> {
   const exam = await prisma.exam.findUniqueOrThrow({
     where: { id: examId },
     include: {
@@ -66,7 +83,19 @@ export async function buildPracticeExamPdf(examId: string, studentName: string):
 
   // validateExam already blocks uneven counts once isPracticeExam is set, so this is
   // safe to read directly.
-  const variantCount = exam.questions[0]?.variations.length ?? 0
+  const labels = practiceVariantLabels(exam.questions[0]?.variations ?? [])
+  const variantCount = labels.length
+
+  let selectedIndices: number[]
+  if (options.variantLabel !== undefined) {
+    const index = labels.indexOf(options.variantLabel)
+    if (index === -1) {
+      throw new Error(`This exam has no variant "${options.variantLabel}".`)
+    }
+    selectedIndices = [index]
+  } else {
+    selectedIndices = labels.map((_, i) => i)
+  }
 
   const renderedPrompts = new Map<string, string>()
   const renderedChoices = new Map<string, string>()
@@ -109,8 +138,8 @@ export async function buildPracticeExamPdf(examId: string, studentName: string):
     renderer = await ExamRenderer.launch({ shellPath })
 
     const merged = await PDFDocument.create()
-    for (let i = 0; i < variantCount; i++) {
-      const label = exam.questions[0]?.variations[i]?.label || String(i + 1)
+    for (const i of selectedIndices) {
+      const label = labels[i]
 
       const layout = buildLayout({
         instructorSeed: exam.instructorSeed,
@@ -150,7 +179,7 @@ export async function buildPracticeExamPdf(examId: string, studentName: string):
       for (const page of pages) merged.addPage(page)
     }
 
-    return { pdf: await merged.save(), examTitle: exam.title, variantCount }
+    return { pdf: await merged.save(), examTitle: exam.title, variantCount, variantLabel: options.variantLabel }
   } finally {
     await renderer?.close()
     await rm(workDir, { recursive: true, force: true })
@@ -158,11 +187,12 @@ export async function buildPracticeExamPdf(examId: string, studentName: string):
 }
 
 /** Filesystem-safe name for the downloaded file. */
-export function practiceExamFileName(examTitle: string): string {
+export function practiceExamFileName(examTitle: string, variantLabel?: string): string {
   const slug = examTitle
     .normalize('NFKD')
     .replace(/[^\w-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
-  return `${slug || 'exam'}-practice.pdf`
+  const suffix = variantLabel ? `-${variantLabel}` : ''
+  return `${slug || 'exam'}-practice${suffix}.pdf`
 }
