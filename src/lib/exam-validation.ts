@@ -14,6 +14,7 @@ export interface ValidatableExam {
     id: string
     order: number
     points: number
+    allowMultipleCorrect: boolean
     variations: {
       id: string
       label: string
@@ -118,12 +119,12 @@ export function validateExam(exam: ValidatableExam): ValidationIssue[] {
           variationId: variation.id,
           message: `${label} has no correct answer marked — it would be ungradable.`,
         })
-      } else if (correct > 1) {
+      } else if (correct > 1 && !question.allowMultipleCorrect) {
         issues.push({
           level: 'error',
           questionId: question.id,
           variationId: variation.id,
-          message: `${label} has ${correct} correct answers marked; exactly one is required.`,
+          message: `${label} has ${correct} correct answers marked, but ${where} does not allow multiple correct answers. Turn that on if this is a select-all-that-apply question, or mark just one choice correct.`,
         })
       }
 

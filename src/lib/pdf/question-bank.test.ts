@@ -11,6 +11,7 @@ const bank: QuestionBank = {
       title: 'Loop tracing',
       points: 2,
       status: 'APPROVED',
+      allowMultipleCorrect: false,
       variations: [
         {
           label: 'A',
@@ -36,6 +37,7 @@ const bank: QuestionBank = {
       title: null,
       points: 1,
       status: 'DRAFT',
+      allowMultipleCorrect: false,
       variations: [
         {
           label: 'A',
@@ -105,5 +107,58 @@ describe('buildBankBody', () => {
 
   it('renders an exam with no questions without throwing', () => {
     expect(buildBankBody({ ...bank, questions: [] })).toContain('no questions yet')
+  })
+})
+
+describe('buildBankBody select-all-that-apply', () => {
+  const satBank: QuestionBank = {
+    ...bank,
+    questions: [
+      {
+        order: 1,
+        title: 'Truthiness',
+        points: 1,
+        status: 'APPROVED',
+        allowMultipleCorrect: true,
+        variations: [
+          {
+            label: 'A',
+            promptHtml: '<p>Which are truthy?</p>',
+            choices: [
+              { number: 1, html: '<p>1</p>', correct: true, pinToLast: false },
+              { number: 2, html: '<p>0</p>', correct: false, pinToLast: false },
+              { number: 3, html: "<p>'a'</p>", correct: true, pinToLast: false },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+  const html = buildBankBody(satBank)
+
+  it('labels the question as select-all-that-apply', () => {
+    expect(html).toContain('select all that apply')
+  })
+
+  it('marks two correct choices without a warning tag', () => {
+    expect(html).toContain('2 correct answers')
+    expect(html).toContain('class="tag ok">2 correct answers')
+    expect(html).not.toContain('class="tag warn">2 correct answers')
+  })
+
+  it('still warns when a select-all-that-apply variation has no correct answer', () => {
+    const noneCorrect = {
+      ...satBank,
+      questions: [
+        {
+          ...satBank.questions[0],
+          variations: satBank.questions[0].variations.map((v) => ({
+            ...v,
+            choices: v.choices.map((c) => ({ ...c, correct: false })),
+          })),
+        },
+      ],
+    }
+    expect(buildBankBody(noneCorrect)).toContain('no correct answer')
   })
 })

@@ -20,6 +20,9 @@ export interface BankQuestion {
   title?: string | null
   points: number
   status: string
+  /** "Select all that apply": a variation may legitimately mark more than one
+   * choice correct. */
+  allowMultipleCorrect: boolean
   variations: BankVariation[]
 }
 
@@ -194,9 +197,13 @@ export function buildBankBody(bank: QuestionBank): string {
                 .join('')
               const correctCount = v.choices.filter((c) => c.correct).length
               const flag =
-                correctCount === 1
-                  ? ''
-                  : `<span class="tag warn">${correctCount === 0 ? 'no correct answer' : `${correctCount} correct answers`}</span>`
+                correctCount === 0
+                  ? '<span class="tag warn">no correct answer</span>'
+                  : correctCount > 1
+                    ? q.allowMultipleCorrect
+                      ? `<span class="tag ok">${correctCount} correct answers</span>`
+                      : `<span class="tag warn">${correctCount} correct answers</span>`
+                    : ''
               return `
                 <section class="v">
                   <div class="vhead">
@@ -218,6 +225,7 @@ export function buildBankBody(bank: QuestionBank): string {
             ${q.title ? `<span class="qtitle">${escapeHtml(q.title)}</span>` : ''}
             <span class="qmeta">
               <span class="tag plain">${q.variations.length} variation${q.variations.length === 1 ? '' : 's'}</span>
+              ${q.allowMultipleCorrect ? '<span class="tag plain">select all that apply</span>' : ''}
               <span class="tag ${q.status === 'APPROVED' ? 'ok' : 'warn'}">${escapeHtml(q.status.toLowerCase().replace(/_/g, ' '))}</span>
               <span class="qpts">${q.points} pt${q.points === 1 ? '' : 's'}</span>
             </span>

@@ -47,6 +47,7 @@ export async function buildQuestionBank(examId: string): Promise<QuestionBank | 
       title: question.title,
       points: question.points,
       status: question.workflowStatus,
+      allowMultipleCorrect: question.allowMultipleCorrect,
       variations: await Promise.all(
         question.variations.map(async (variation) => ({
           label: variation.label,

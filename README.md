@@ -80,9 +80,9 @@ loads a demo exam plus a roster, first drop your own export at
    answers marked. That PDF is a complete answer key for the exam; it is an
    instructor document, not a handout.
    A ready-made bank of 50 questions with 100 variations (2 per question — every
-   question carries the same count, so the bank also works as a practice exam) is
-   at `samples/sample-exam-50-questions.csv` if you just want something to test
-   with.
+   question carries the same count, so the bank also works as a practice exam),
+   including 2 select-all-that-apply questions, is at
+   `samples/sample-exam-50-questions.csv` if you just want something to test with.
 3. **Generate.** Pick sections, then run. Sections excluded on the course are not
    offered here and are never generated for. This *freezes a snapshot* of every question
    and computes each student's layout. Editing questions afterwards can never change
@@ -312,7 +312,7 @@ seed — enough to identify a stray page and recover its layout.
 
 | Command | What it does |
 |---|---|
-| `python3 scripts/make-sample-questions.py` | Regenerates `samples/sample-exam-50-questions.csv` — 50 questions, 100 variations (2 each), 1 point each, for testing |
+| `python3 scripts/make-sample-questions.py` | Regenerates `samples/sample-exam-50-questions.csv` — 50 questions, 100 variations (2 each), 1 point each, 2 select-all-that-apply, for testing |
 | `npm run verify` | Full end-to-end verification against a throwaway `verify.db`. Never touches your real database. |
 | `npm test` | Unit tests against the synthetic fixtures in `src/lib/__fixtures__/`. If real files are present in `assets/`, extra checks run against them too; otherwise those are skipped. |
 | `npm run db:seed` | Loads a 12-question demo exam and the sample roster |

@@ -11,7 +11,7 @@ function question(position: number, letters: string[], awarded: number): GradedQ
     verdict: awarded > 0 ? 'correct' : 'incorrect',
     awarded,
     possible: 1,
-    correctLetter: 'A',
+    correctLetters: ['A'],
     overridden: false,
   }
 }

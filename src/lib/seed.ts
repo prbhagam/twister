@@ -112,7 +112,9 @@ export interface LayoutEntry {
   runVariationId: string
   /** choiceOrder[0] is printed as A, [1] as B, and so on. */
   choiceOrder: string[]
-  correctLetter: string | null
+  /** Every letter marked correct. Length 1 for an ordinary question; more than
+   * one only when the question allows multiple correct answers. */
+  correctLetters: string[]
   choiceCount: number
   points: number
 }
@@ -161,13 +163,13 @@ export function buildLayout(params: {
     const pinned = variation.choices.filter((c) => c.pinToLast)
     const ordered = [...shuffle(free, rng), ...pinned]
 
-    const correctIndex = ordered.findIndex((c) => c.isCorrect)
+    const correctLetters = ordered.flatMap((c, i) => (c.isCorrect ? [LETTERS[i]] : []))
 
     return {
       runQuestionId: question.refId,
       runVariationId: variation.refId,
       choiceOrder: ordered.map((c) => c.refId),
-      correctLetter: correctIndex >= 0 ? (LETTERS[correctIndex] ?? null) : null,
+      correctLetters,
       choiceCount: ordered.length,
       points: question.points,
     }

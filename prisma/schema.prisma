@@ -122,17 +122,21 @@ model Exam {
 }
 
 model Question {
-  id                String    @id @default(cuid())
-  examId            String
-  order             Int
-  title             String? // internal label for your own navigation; never printed
-  points            Float     @default(1)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  workflowStatus    String    @default("DRAFT") // DRAFT | IN_REVIEW | APPROVED | RETIRED
-  statusChangedAt   DateTime  @default(now())
-  statusChangedById String?
-  archivedAt        DateTime?
+  id                   String    @id @default(cuid())
+  examId               String
+  order                Int
+  title                String? // internal label for your own navigation; never printed
+  points               Float     @default(1)
+  // "Select all that apply": lets a variation mark more than one choice correct.
+  // Off by default so marking a second choice correct by accident still blocks
+  // generation instead of silently becoming a multi-answer question.
+  allowMultipleCorrect Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  workflowStatus       String    @default("DRAFT") // DRAFT | IN_REVIEW | APPROVED | RETIRED
+  statusChangedAt      DateTime  @default(now())
+  statusChangedById    String?
+  archivedAt           DateTime?
 
   exam       Exam        @relation(fields: [examId], references: [id], onDelete: Cascade)
   variations Variation[]

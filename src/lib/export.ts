@@ -18,8 +18,9 @@ export interface ExportStudent {
 }
 
 /**
- * Per-student answer key: which letter is correct at each bubble position, and
- * which question/variation that position actually came from.
+ * Per-student answer key: which letter(s) are correct at each bubble position
+ * (more than one only for a select-all-that-apply question), and which
+ * question/variation that position actually came from.
  *
  * This is what makes an individualized exam auditable — without it there is no way
  * to check a disputed score against the paper.
@@ -53,7 +54,7 @@ export function answerKeyCsv(
       ]
       for (let p = 1; p <= positions; p++) {
         const entry = byPosition.get(p)
-        cells.push(entry?.correctLetter ?? '')
+        cells.push(entry?.correctLetters.join('') ?? '')
         cells.push(
           entry
             ? `${questionLabels.get(entry.runQuestionId) ?? '?'}${variationLabels.get(entry.runVariationId) ?? ''}`

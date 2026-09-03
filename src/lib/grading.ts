@@ -104,23 +104,40 @@ export interface GradedQuestion {
   verdict: Verdict
   awarded: number
   possible: number
-  correctLetter: string | null
+  correctLetters: string[]
   /** Set when an Override row replaced the computed score. */
   overridden: boolean
   overrideNote?: string
 }
 
+/**
+ * Grades one bubbled response against one entry's key.
+ *
+ * An ordinary question (one correct letter) is unforgiving of a second mark —
+ * that is always `multi`, whatever the second mark was, since only one bubble was
+ * ever a valid answer. A select-all-that-apply question (more than one correct
+ * letter) instead requires an exact set match: every correct letter marked, and
+ * nothing else, with no partial credit for getting some of them.
+ */
 export function classify(letters: string[], entry: LayoutEntry): Verdict {
   if (letters.length === 0) return 'blank'
-  if (letters.length > 1) return 'multi'
 
-  const letter = letters[0]
-  const index = LETTERS.indexOf(letter as (typeof LETTERS)[number])
-  // The variation had fewer choices than the scantron offers — the student
-  // bubbled a letter that was not printed on their paper.
-  if (index === -1 || index >= entry.choiceCount) return 'out_of_range'
+  for (const letter of letters) {
+    const index = LETTERS.indexOf(letter as (typeof LETTERS)[number])
+    // The variation had fewer choices than the scantron offers — the student
+    // bubbled a letter that was not printed on their paper.
+    if (index === -1 || index >= entry.choiceCount) return 'out_of_range'
+  }
 
-  return letter === entry.correctLetter ? 'correct' : 'incorrect'
+  if (entry.correctLetters.length <= 1) {
+    if (letters.length > 1) return 'multi'
+    return letters[0] === (entry.correctLetters[0] ?? null) ? 'correct' : 'incorrect'
+  }
+
+  const marked = new Set(letters)
+  const correct = new Set(entry.correctLetters)
+  const exact = marked.size === correct.size && [...correct].every((l) => marked.has(l))
+  return exact ? 'correct' : 'incorrect'
 }
 
 export interface GradeResult {
@@ -166,7 +183,7 @@ export function gradeStudent(params: {
         verdict,
         awarded: override ? override.awarded : verdict === 'correct' ? entry.points : 0,
         possible: entry.points,
-        correctLetter: entry.correctLetter,
+        correctLetters: entry.correctLetters,
         overridden: Boolean(override),
         overrideNote: override?.note ?? undefined,
       }

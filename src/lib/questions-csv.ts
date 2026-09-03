@@ -17,6 +17,9 @@ export interface ImportedQuestion {
   /** Only present in the whole-exam format. */
   questionNumber?: number
   points?: number
+  /** Only meaningful in the whole-exam format; the per-question format has no
+   * column for it, since that format never touches the Question row. */
+  allowMultipleCorrect?: boolean
   variations: ImportedVariation[]
 }
 
@@ -29,7 +32,7 @@ export interface QuestionCsvResult {
 const CHOICE_COLUMNS = Array.from({ length: MAX_CHOICES }, (_, i) => `choice_${i + 1}`)
 
 export const SINGLE_QUESTION_HEADER = ['variation_label', 'prompt', ...CHOICE_COLUMNS, 'correct', 'pin_last']
-export const WHOLE_EXAM_HEADER = ['question_number', 'points', ...SINGLE_QUESTION_HEADER]
+export const WHOLE_EXAM_HEADER = ['question_number', 'points', 'allow_multiple', ...SINGLE_QUESTION_HEADER]
 
 export const CSV_TEMPLATE = [
   SINGLE_QUESTION_HEADER.join(','),
@@ -44,15 +47,30 @@ function parseIndexList(raw: string): number[] {
     .filter((n) => Number.isInteger(n) && n >= 1)
 }
 
+const TRUTHY = new Set(['1', 'true', 'yes', 'y'])
+function parseBool(raw: string): boolean {
+  return TRUTHY.has(raw.trim().toLowerCase())
+}
+
 /**
  * Parses either the per-question format (one row per variation) or the whole-exam
- * format (same columns, prefixed with question_number and points).
+ * format (same columns, prefixed with question_number, points, and allow_multiple).
  *
  * `correct` and `pin_last` are 1-based indices into the *authored* choice columns,
  * not letters — the printed letters differ per student, so letters would be
- * meaningless here.
+ * meaningless here. `correct` may list more than one index only in the whole-exam
+ * format, and only for a question whose first row has `allow_multiple` set — this
+ * keeps a second index typed by accident an error rather than a silent
+ * select-all-that-apply question.
+ *
+ * The per-question format has no `allow_multiple` column of its own — pass
+ * `allowMultipleCorrect` to say whether the *target* question (whatever it
+ * already is on the exam) allows more than one index in `correct`.
  */
-export function parseQuestionCsv(csv: string): QuestionCsvResult {
+export function parseQuestionCsv(
+  csv: string,
+  options: { allowMultipleCorrect?: boolean } = {},
+): QuestionCsvResult {
   const parsed = Papa.parse<Record<string, string>>(csv.replace(/^﻿/, ''), {
     header: true,
     skipEmptyLines: true,
@@ -115,15 +133,30 @@ export function parseQuestionCsv(csv: string): QuestionCsvResult {
       )
     }
 
-    const correctIndices = parseIndexList(row['correct'] ?? '')
-    if (correctIndices.length !== 1) {
-      errors.push(`Line ${line}: "correct" must be exactly one 1-based choice index.`)
+    // Only the group's first row sets allow_multiple, the same way only its first
+    // row's points column is read — later rows repeating (or omitting) it are ignored.
+    const existing = byQuestion.get(groupKey)
+    const allowMultiple = wholeExam
+      ? (existing?.allowMultipleCorrect ?? parseBool(row['allow_multiple'] ?? ''))
+      : Boolean(options.allowMultipleCorrect)
+
+    const correctIndices = [...new Set(parseIndexList(row['correct'] ?? ''))]
+    if (correctIndices.length === 0) {
+      errors.push(`Line ${line}: "correct" needs at least one 1-based choice index.`)
       return
     }
-    const correct = correctIndices[0]
-    if (correct > choicesText.length) {
+    if (correctIndices.length > 1 && !allowMultiple) {
       errors.push(
-        `Line ${line}: correct=${correct} but there are only ${choicesText.length} choices.`,
+        `Line ${line}: "correct" lists ${correctIndices.length} indices, but this question does not have ` +
+          `allow_multiple set. Set allow_multiple on its first row for a select-all-that-apply question, ` +
+          `or mark just one choice correct.`,
+      )
+      return
+    }
+    const tooHigh = correctIndices.filter((n) => n > choicesText.length)
+    if (tooHigh.length) {
+      errors.push(
+        `Line ${line}: correct=${tooHigh.join(',')} but there are only ${choicesText.length} choices.`,
       )
       return
     }
@@ -136,22 +169,22 @@ export function parseQuestionCsv(csv: string): QuestionCsvResult {
     }
 
     const variation: ImportedVariation = {
-      label: (row['variation_label'] ?? '').trim() || String.fromCharCode(65 + (byQuestion.get(groupKey)?.variations.length ?? 0)),
+      label: (row['variation_label'] ?? '').trim() || String.fromCharCode(65 + (existing?.variations.length ?? 0)),
       promptMarkdown: prompt,
       choices: choicesText.map((text, idx) => ({
         textMarkdown: text,
-        isCorrect: idx + 1 === correct,
+        isCorrect: correctIndices.includes(idx + 1),
         pinToLast: pinned.has(idx + 1),
       })),
     }
 
-    const existing = byQuestion.get(groupKey)
     if (existing) {
       existing.variations.push(variation)
     } else {
       byQuestion.set(groupKey, {
         questionNumber: wholeExam ? Number(groupKey) : undefined,
         points: row['points'] ? Number(row['points']) : undefined,
+        allowMultipleCorrect: allowMultiple,
         variations: [variation],
       })
     }
@@ -169,6 +202,7 @@ export function parseQuestionCsv(csv: string): QuestionCsvResult {
 interface ExportableQuestion {
   order: number
   points: number
+  allowMultipleCorrect: boolean
   variations: {
     label: string
     promptMarkdown: string
@@ -182,10 +216,15 @@ export function toQuestionCsv(questions: ExportableQuestion[], includeQuestionNu
   const rows = questions.flatMap((q) =>
     q.variations.map((v) => {
       const cells: (string | number)[] = []
-      if (includeQuestionNumber) cells.push(q.order, q.points)
+      if (includeQuestionNumber) cells.push(q.order, q.points, q.allowMultipleCorrect ? 1 : 0)
       cells.push(v.label, v.promptMarkdown)
       for (let i = 0; i < MAX_CHOICES; i++) cells.push(v.choices[i]?.textMarkdown ?? '')
-      cells.push(v.choices.findIndex((c) => c.isCorrect) + 1)
+      cells.push(
+        v.choices
+          .map((c, i) => (c.isCorrect ? i + 1 : 0))
+          .filter(Boolean)
+          .join(' '),
+      )
       cells.push(
         v.choices
           .map((c, i) => (c.pinToLast ? i + 1 : 0))

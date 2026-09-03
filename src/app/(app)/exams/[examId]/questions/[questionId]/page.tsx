@@ -47,6 +47,7 @@ export default async function QuestionPage({
         order={question.order}
         initialPoints={question.points}
         initialTitle={question.title ?? ''}
+        initialAllowMultipleCorrect={question.allowMultipleCorrect}
         initialVariations={question.variations.map((variation) => ({
           label: variation.label,
           promptMarkdown: variation.promptMarkdown,
@@ -75,7 +76,7 @@ export default async function QuestionPage({
           <CsvImport
             examId={examId}
             questionId={question.id}
-            hint="One row per variation: variation_label, prompt, choice_1…choice_5, correct (1-based index), pin_last (space-separated indices). Leave trailing choice columns blank for fewer than 5 options."
+            hint={`One row per variation: variation_label, prompt, choice_1…choice_5, correct (1-based index${question.allowMultipleCorrect ? '(es), space-separated' : ''}), pin_last (space-separated indices). Leave trailing choice columns blank for fewer than 5 options.`}
           />
         </div>
       </Card>
