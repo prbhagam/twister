@@ -129,6 +129,7 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
                           <Badge tone={question.workflowStatus === 'APPROVED' ? 'green' : 'amber'}>
                             {question.workflowStatus.toLowerCase().replace(/_/g, ' ')}
                           </Badge>
+                          {question.allowMultipleCorrect ? <Badge tone="blue">select all</Badge> : null}
                           {question.variations.map((v) => (
                             <Badge key={v.id} tone={v.choices.length < 5 ? 'amber' : 'neutral'}>
                               {v.label}: {v.choices.length} choices
@@ -197,7 +198,7 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
               </div>
               <CsvImport
                 examId={exam.id}
-                hint="Whole-exam CSV (question_number, points, variation_label, prompt, choice_1…choice_5, correct, pin_last). This replaces every question in the exam."
+                hint="Whole-exam CSV (question_number, points, allow_multiple, variation_label, prompt, choice_1…choice_5, correct, pin_last). correct may list more than one index only when allow_multiple is set on the question's first row. This replaces every question in the exam."
               />
             </div>
           </Card>

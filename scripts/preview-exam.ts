@@ -111,7 +111,7 @@ try {
     await writeFile(file, pdf)
     console.log(`wrote ${file}  (${pageCount} pages, trace ${layout.traceCode})`)
     console.log(`  order: ${layout.entries.map((e) => e.runQuestionId).join(' ')}`)
-    console.log(`  key:   ${layout.entries.map((e) => e.correctLetter).join('')}`)
+    console.log(`  key:   ${layout.entries.map((e) => e.correctLetters.join('/')).join(' ')}`)
   }
 } finally {
   await renderer.close()

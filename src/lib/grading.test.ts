@@ -20,13 +20,13 @@ const FIXTURE = path.join(import.meta.dirname, '__fixtures__', 'gradescope.csv')
 // A real export is student PII and is never committed; checked only if present.
 const REAL_CSV = path.join(process.cwd(), 'assets', 'Gradescope Student Responses.csv')
 
-function entry(position: number, correctLetter: string | null, choiceCount = 5, points = 1): LayoutEntry {
+function entry(position: number, correctLetters: string[], choiceCount = 5, points = 1): LayoutEntry {
   return {
     position,
     runQuestionId: `q${position}`,
     runVariationId: `v${position}`,
     choiceOrder: Array.from({ length: choiceCount }, (_, i) => `c${i}`),
-    correctLetter,
+    correctLetters,
     choiceCount,
     points,
   }
@@ -111,34 +111,61 @@ describe('parseLetters', () => {
 
 describe('classify', () => {
   it('scores a matching letter correct', () => {
-    expect(classify(['C'], entry(1, 'C'))).toBe('correct')
+    expect(classify(['C'], entry(1, ['C']))).toBe('correct')
   })
 
   it('scores a non-matching letter incorrect', () => {
-    expect(classify(['D'], entry(1, 'C'))).toBe('incorrect')
+    expect(classify(['D'], entry(1, ['C']))).toBe('incorrect')
   })
 
   it('flags a blank', () => {
-    expect(classify([], entry(1, 'C'))).toBe('blank')
+    expect(classify([], entry(1, ['C']))).toBe('blank')
   })
 
   it('flags a multi-mark even when one of the marks is right', () => {
-    expect(classify(['A', 'C'], entry(1, 'C'))).toBe('multi')
+    expect(classify(['A', 'C'], entry(1, ['C']))).toBe('multi')
   })
 
   it('flags a letter past the end of a short variation', () => {
     // 3-choice variation: the paper only printed A, B, C.
-    expect(classify(['E'], entry(1, 'B', 3))).toBe('out_of_range')
-    expect(classify(['C'], entry(1, 'B', 3))).toBe('incorrect')
+    expect(classify(['E'], entry(1, ['B'], 3))).toBe('out_of_range')
+    expect(classify(['C'], entry(1, ['B'], 3))).toBe('incorrect')
   })
 
   it('flags junk OCR output', () => {
-    expect(classify(['X'], entry(1, 'B'))).toBe('out_of_range')
+    expect(classify(['X'], entry(1, ['B']))).toBe('out_of_range')
+  })
+
+  describe('select-all-that-apply (more than one correct letter)', () => {
+    it('scores an exact match correct, regardless of mark order', () => {
+      expect(classify(['A', 'C'], entry(1, ['A', 'C']))).toBe('correct')
+      expect(classify(['C', 'A'], entry(1, ['A', 'C']))).toBe('correct')
+    })
+
+    it('scores a partial match incorrect rather than multi', () => {
+      expect(classify(['A'], entry(1, ['A', 'C']))).toBe('incorrect')
+    })
+
+    it('scores an over-marked response incorrect rather than multi', () => {
+      expect(classify(['A', 'C', 'D'], entry(1, ['A', 'C']))).toBe('incorrect')
+    })
+
+    it('scores the wrong pair incorrect', () => {
+      expect(classify(['B', 'D'], entry(1, ['A', 'C']))).toBe('incorrect')
+    })
+
+    it('still flags an out-of-range letter even when marked alongside a correct one', () => {
+      expect(classify(['A', 'X'], entry(1, ['A', 'C']))).toBe('out_of_range')
+    })
+
+    it('still flags a blank', () => {
+      expect(classify([], entry(1, ['A', 'C']))).toBe('blank')
+    })
   })
 })
 
 describe('gradeStudent', () => {
-  const layout = [entry(1, 'A'), entry(2, 'B'), entry(3, 'C', 3), entry(4, 'D', 5, 2)]
+  const layout = [entry(1, ['A']), entry(2, ['B']), entry(3, ['C'], 3), entry(4, ['D'], 5, 2)]
 
   it('sums points, weighting by the question value', () => {
     const result = gradeStudent({
@@ -197,8 +224,8 @@ describe('gradeStudent', () => {
   it('grades by bubble position, not by authoring order', () => {
     // Position 1 on this student's paper is question "q3" with correct letter C.
     const shuffled = [
-      { ...entry(1, 'C'), runQuestionId: 'q3' },
-      { ...entry(2, 'A'), runQuestionId: 'q1' },
+      { ...entry(1, ['C']), runQuestionId: 'q3' },
+      { ...entry(2, ['A']), runQuestionId: 'q1' },
     ]
     const result = gradeStudent({
       layout: shuffled,

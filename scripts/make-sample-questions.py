@@ -3,7 +3,8 @@
 Generates samples/sample-exam-50-questions.csv — a 50-question CS 1301 style bank,
 2 variations each (kept uniform so the bank also works as a practice exam, which
 requires every question to have the same number of variations), in TWISTER's
-whole-exam import format.
+whole-exam import format. Two questions are select-all-that-apply, to exercise
+that path too.
 
 Kept as a generator rather than a hand-edited CSV so the file stays valid against
 the importer: every question is checked for a unique correct answer, 2-5 choices,
@@ -20,13 +21,20 @@ NOTA = "None of the above"
 AOTA = "All of the above"
 
 
-def q(points, *variations):
-    """A question: (points, [(prompt, [choices], correct_index_0based), ...])."""
-    return {"points": points, "variations": list(variations)}
+def q(points, *variations, allow_multiple=False):
+    """A question: (points, [(prompt, [choices], correct_index(es)), ...]).
+
+    allow_multiple marks it "select all that apply" — every variation may then
+    list more than one correct index.
+    """
+    return {"points": points, "variations": list(variations), "allow_multiple": allow_multiple}
 
 
 def v(prompt, choices, correct):
-    return {"prompt": prompt, "choices": choices, "correct": correct}
+    """correct is a 0-based choice index, or a list of them for a select-all-
+    that-apply variation."""
+    indices = list(correct) if isinstance(correct, (list, tuple)) else [correct]
+    return {"prompt": prompt, "choices": choices, "correct": indices}
 
 
 def code(body):
@@ -45,8 +53,11 @@ QUESTIONS = [
       v("What does `float('3.5')` return?", ["`3.5`", "`'3.5'`", "`3`", "`ValueError`", "`TypeError`"], 0),
       v("What does `int('3.5')` return?", ["`3.5`", "`3`", "`4`", "`ValueError`", "`TypeError`"], 3)),
     q(1,
-      v("Which of these is a valid Python variable name?", ["`2nd_place`", "`second place`", "`second_place`", "`class`", "`second-place`"], 2),
-      v("Which of these is **not** a valid Python variable name?", ["`_total`", "`total2`", "`Total`", "`2total`", "`tOtAl`"], 3)),
+      v("Select all valid Python variable names.",
+        ["`2nd_place`", "`second_place`", "`_place2`", "`class`", "`second place`"], [1, 2]),
+      v("Select all Python variable names that are **not** valid.",
+        ["`_total`", "`total2`", "`2total`", "`my var`", "`Total`"], [2, 3]),
+      allow_multiple=True),
     q(1,
       v("What does `type(None)` report?", ["`<class 'NoneType'>`", "`<class 'null'>`", "`<class 'bool'>`", "`<class 'str'>`", "`TypeError`"], 0),
       v("What does `bool(None)` evaluate to?", ["`True`", "`False`", "`None`", "`0`", "`TypeError`"], 1)),
@@ -148,8 +159,11 @@ QUESTIONS = [
       v("What does the following print?\n\n" + code("x = 5\nif x > 3:\n    print('big')\nelif x > 1:\n    print('medium')\nelse:\n    print('small')"), ["`big`", "`medium`", "`small`", "`big` and `medium`", "nothing"], 0),
       v("What does the following print?\n\n" + code("x = 2\nif x > 3:\n    print('big')\nelif x > 1:\n    print('medium')\nelse:\n    print('small')"), ["`big`", "`medium`", "`small`", "`medium` and `small`", "nothing"], 1)),
     q(1,
-      v("Which values of `x` make `if x:` run its body?", ["`0`", "`''`", "`[]`", "`'0'`", "`None`"], 3),
-      v("Which values of `x` make `if not x:` run its body?", ["`1`", "`'a'`", "`[0]`", "`[]`", "`True`"], 3)),
+      v("Select all values of `x` that make `if x:` run its body.",
+        ["`0`", "`''`", "`[]`", "`'0'`", "`[0]`"], [3, 4]),
+      v("Select all values of `x` that make `if not x:` run its body.",
+        ["`1`", "`'a'`", "`{}`", "`[]`", "`True`"], [2, 3]),
+      allow_multiple=True),
     q(1,
       v("What does the following print?\n\n" + code("x = 4\nif x % 2 == 0:\n    print('even')\nelse:\n    print('odd')"), ["`even`", "`odd`", "both", "nothing", "`SyntaxError`"], 0),
       v("What does the following print?\n\n" + code("x = 7\nif x % 2 == 0:\n    print('even')\nelse:\n    print('odd')"), ["`even`", "`odd`", "both", "nothing", "`SyntaxError`"], 1)),
@@ -210,10 +224,17 @@ def validate(questions):
             problems.append(f"Q{i}: no variations")
         for var in question["variations"]:
             n = len(var["choices"])
+            correct = var["correct"]
             if not 2 <= n <= MAX_CHOICES:
                 problems.append(f"Q{i}: {n} choices (must be 2-{MAX_CHOICES})")
-            if not 0 <= var["correct"] < n:
-                problems.append(f"Q{i}: correct index {var['correct']} out of range")
+            if not correct:
+                problems.append(f"Q{i}: no correct answer marked")
+            if len(correct) != len(set(correct)):
+                problems.append(f"Q{i}: correct index repeated: {correct}")
+            if any(not 0 <= c < n for c in correct):
+                problems.append(f"Q{i}: correct index {correct} out of range")
+            if len(correct) > 1 and not question["allow_multiple"]:
+                problems.append(f"Q{i}: {len(correct)} correct answers marked, but allow_multiple is off")
             if len(set(var["choices"])) != n:
                 problems.append(f"Q{i}: duplicate choice text")
             if not var["prompt"].strip():
@@ -232,7 +253,7 @@ def main():
     out = pathlib.Path("samples/sample-exam-50-questions.csv")
     out.parent.mkdir(exist_ok=True)
 
-    header = ["question_number", "points", "variation_label", "prompt"] + \
+    header = ["question_number", "points", "allow_multiple", "variation_label", "prompt"] + \
              [f"choice_{i + 1}" for i in range(MAX_CHOICES)] + ["correct", "pin_last"]
 
     rows = []
@@ -241,9 +262,10 @@ def main():
             choices = var["choices"]
             # "None/All of the above" must stay in the last slot when shuffled.
             pinned = [str(i + 1) for i, c in enumerate(choices) if c in (NOTA, AOTA)]
-            row = [number, question["points"], chr(ord("A") + index), var["prompt"]]
+            allow_multiple = "1" if question["allow_multiple"] else ""
+            row = [number, question["points"], allow_multiple, chr(ord("A") + index), var["prompt"]]
             row += list(choices) + [""] * (MAX_CHOICES - len(choices))
-            row += [var["correct"] + 1, " ".join(pinned)]
+            row += [" ".join(str(c + 1) for c in var["correct"]), " ".join(pinned)]
             rows.append(row)
 
     with out.open("w", newline="", encoding="utf-8") as f:
@@ -253,9 +275,11 @@ def main():
 
     variations = sum(len(q["variations"]) for q in QUESTIONS)
     short = sum(1 for q in QUESTIONS for v in q["variations"] if len(v["choices"]) < MAX_CHOICES)
+    multi = sum(1 for q in QUESTIONS if q["allow_multiple"])
     print(f"wrote {out}")
     print(f"  {len(QUESTIONS)} questions, {variations} variations, {len(rows)} rows")
     print(f"  {short} variation(s) with fewer than {MAX_CHOICES} choices")
+    print(f"  {multi} select-all-that-apply question(s)")
     return 0
 
 

@@ -108,7 +108,7 @@ async function main() {
   check('every student got a distinct paper', fingerprints.size === layouts.length, `${fingerprints.size}/${layouts.length}`)
   check('every paper has all questions', layouts.every((l) => l.length === exam.questions.length))
 
-  const keyStrings = new Set(layouts.map((l) => l.map((e) => e.correctLetter).join('')))
+  const keyStrings = new Set(layouts.map((l) => l.map((e) => e.correctLetters.join('/')).join(' ')))
   check('answer keys differ across students', keyStrings.size > layouts.length * 0.9, `${keyStrings.size} distinct keys`)
 
   const orderStrings = new Set(layouts.map((l) => l.map((e) => e.runQuestionId).join()))
@@ -123,7 +123,7 @@ async function main() {
 
   const wrongLetter = (entry: LayoutEntry) => {
     const options = ['A', 'B', 'C', 'D', 'E'].slice(0, entry.choiceCount)
-    return options.find((l) => l !== entry.correctLetter) ?? 'A'
+    return options.find((l) => !entry.correctLetters.includes(l)) ?? 'A'
   }
 
   const shortQuestion = targetLayout.find((e) => e.choiceCount < 5)
@@ -182,7 +182,7 @@ async function main() {
         ? ''
         : isTarget && injected.has(p)
           ? injected.get(p)!
-          : (entry.correctLetter ?? 'A')
+          : (entry.correctLetters[0] ?? 'A')
       // Gradescope's own "correct response" is deliberately wrong here — TWISTER
       // must ignore it and use the run's own key.
       row.push('', 1, response, 'A')

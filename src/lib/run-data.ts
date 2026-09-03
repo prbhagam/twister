@@ -72,7 +72,7 @@ export async function loadScoreRows(runId: string): Promise<{
           verdict: q.verdict as Verdict,
           awarded: q.awarded,
           possible: q.possible,
-          correctLetter: byPosition.get(q.position)?.correctLetter ?? null,
+          correctLetters: byPosition.get(q.position)?.correctLetters ?? [],
           overridden: Boolean(override),
           overrideNote: override?.note ?? undefined,
         }

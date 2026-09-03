@@ -130,7 +130,8 @@ async function main() {
 
     for (const entry of layout) {
       const available = LETTERS.slice(0, entry.choiceCount)
-      const wrongOnes = available.filter((l) => l !== entry.correctLetter)
+      const correctLetter = entry.correctLetters[0] ?? 'A'
+      const wrongOnes = available.filter((l) => !entry.correctLetters.includes(l))
       const roll = rand()
 
       if (roll < 0.03) {
@@ -139,7 +140,7 @@ async function main() {
         flagTally.blank++
       } else if (roll < 0.055) {
         const other = wrongOnes[Math.floor(rand() * wrongOnes.length)] ?? 'B'
-        marks.set(entry.position, [entry.correctLetter ?? 'A', other].sort())
+        marks.set(entry.position, [correctLetter, other].sort())
         flags.push('multi')
         flagTally.multi++
       } else if (roll < 0.075 && entry.choiceCount < LETTERS.length) {
@@ -152,7 +153,7 @@ async function main() {
         flags.push('wrong')
         flagTally.wrong++
       } else {
-        marks.set(entry.position, [entry.correctLetter ?? 'A'])
+        marks.set(entry.position, [correctLetter])
       }
     }
 

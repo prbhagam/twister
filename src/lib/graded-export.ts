@@ -132,7 +132,7 @@ async function reportsForRun(runId: string): Promise<{ report: GradedReport; fol
             letter: LETTERS[i],
             html: choiceHtml.get(choiceId) ?? '',
             chosen: marked.includes(LETTERS[i]),
-            correct: entry.correctLetter === LETTERS[i],
+            correct: entry.correctLetters.includes(LETTERS[i]),
           })),
           verdict,
           verdictLabel: VERDICT_LABEL[verdict] ?? verdict,

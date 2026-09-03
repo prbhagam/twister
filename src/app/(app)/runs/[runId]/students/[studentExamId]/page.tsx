@@ -188,7 +188,7 @@ export default async function StudentReviewPage({
                   <ul className="space-y-1">
                     {entry.choiceOrder.map((choiceId, i) => {
                       const letter = LETTERS[i]
-                      const isCorrect = letter === entry.correctLetter
+                      const isCorrect = entry.correctLetters.includes(letter)
                       const isMarked = marked.includes(letter)
                       return (
                         <li
@@ -217,7 +217,7 @@ export default async function StudentReviewPage({
                       <span>
                         Scanned as{' '}
                         <code className="font-mono">{questionResult.rawResponse || '(blank)'}</code> ·
-                        key <code className="font-mono">{entry.correctLetter}</code>
+                        key <code className="font-mono">{entry.correctLetters.join('')}</code>
                       </span>
                       {verdict && (FLAGGED.includes(verdict) || override) ? (
                         <OverrideControl

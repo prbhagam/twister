@@ -74,7 +74,7 @@ const data = studentExams.map((se, i) => {
   ]
 
   for (const entry of layout) {
-    let response = entry.correctLetter ?? 'A'
+    let response = entry.correctLetters[0] ?? 'A'
     if (!missing) {
       const roll = rand()
       if (roll < 0.03) response = ''
@@ -82,7 +82,7 @@ const data = studentExams.map((se, i) => {
       else if (roll < 0.07 && entry.choiceCount < 5) response = 'E'
       else if (roll < 0.28) {
         const options = ['A', 'B', 'C', 'D', 'E'].slice(0, entry.choiceCount)
-        response = options.find((l) => l !== entry.correctLetter) ?? 'A'
+        response = options.find((l) => !entry.correctLetters.includes(l)) ?? 'A'
       }
     } else {
       response = ''

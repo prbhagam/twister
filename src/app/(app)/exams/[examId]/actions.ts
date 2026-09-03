@@ -175,7 +175,20 @@ export async function importQuestionCsv(
 
   if (!(file instanceof File) || file.size === 0) return { errors: ['Choose a CSV to upload.'] }
 
-  const result = parseQuestionCsv(await file.text())
+  // The per-question format has no allow_multiple column of its own — it inherits
+  // whatever is already set on the question, from the editor's toggle.
+  let existingQuestion: { examId: string; allowMultipleCorrect: boolean } | null = null
+  if (questionId) {
+    existingQuestion = await prisma.question.findUniqueOrThrow({
+      where: { id: questionId },
+      select: { examId: true, allowMultipleCorrect: true },
+    })
+    if (existingQuestion.examId !== examId) return { errors: ['Question does not belong to this exam.'] }
+  }
+
+  const result = parseQuestionCsv(await file.text(), {
+    allowMultipleCorrect: existingQuestion?.allowMultipleCorrect,
+  })
   if (result.errors.length) return { errors: result.errors, warnings: result.warnings }
   if (result.questions.length === 0) return { errors: ['No question rows found in that CSV.'] }
 
@@ -200,8 +213,6 @@ export async function importQuestionCsv(
     )
 
   if (questionId) {
-    const existing = await prisma.question.findUniqueOrThrow({ where: { id: questionId } })
-    if (existing.examId !== examId) return { errors: ['Question does not belong to this exam.'] }
     if (result.questions.length > 1) {
       return {
         errors: [
@@ -231,6 +242,7 @@ export async function importQuestionCsv(
         examId,
         order: question.questionNumber ?? index + 1,
         points: question.points ?? 1,
+        allowMultipleCorrect: question.allowMultipleCorrect ?? false,
       },
     })
     await Promise.all(writeVariations(created.id, question))

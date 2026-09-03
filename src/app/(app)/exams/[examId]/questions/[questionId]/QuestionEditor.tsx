@@ -24,6 +24,7 @@ export function QuestionEditor({
   order,
   initialPoints,
   initialTitle,
+  initialAllowMultipleCorrect,
   initialVariations,
 }: {
   examId: string
@@ -31,12 +32,14 @@ export function QuestionEditor({
   order: number
   initialPoints: number
   initialTitle: string
+  initialAllowMultipleCorrect: boolean
   initialVariations: EditableVariation[]
 }) {
   const [state, action, pending] = useActionState<SaveState, FormData>(saveQuestion, {})
   const [variations, setVariations] = useState<EditableVariation[]>(
     initialVariations.length > 0 ? initialVariations : [blankVariation(0)],
   )
+  const [allowMultipleCorrect, setAllowMultipleCorrect] = useState(initialAllowMultipleCorrect)
 
   const update = (index: number, patch: Partial<EditableVariation>) =>
     setVariations((prev) => prev.map((v, i) => (i === index ? { ...v, ...patch } : v)))
@@ -50,12 +53,33 @@ export function QuestionEditor({
       ),
     )
 
-  // Exactly one correct answer per variation, enforced in the UI as a radio group.
+  // Turning "select all that apply" off collapses every variation back down to
+  // its first marked choice, rather than leaving multiple marks the save action
+  // would then have to reject.
+  const setAllowMultiple = (value: boolean) => {
+    setAllowMultipleCorrect(value)
+    if (value) return
+    setVariations((prev) =>
+      prev.map((v) => {
+        const firstCorrect = Math.max(0, v.choices.findIndex((c) => c.isCorrect))
+        return { ...v, choices: v.choices.map((c, j) => ({ ...c, isCorrect: j === firstCorrect })) }
+      }),
+    )
+  }
+
+  // A radio group when only one correct answer is allowed; a checkbox group,
+  // never letting the last correct mark be unchecked, when the question allows
+  // multiple.
   const setCorrect = (vIndex: number, cIndex: number) =>
     setVariations((prev) =>
-      prev.map((v, i) =>
-        i === vIndex ? { ...v, choices: v.choices.map((c, j) => ({ ...c, isCorrect: j === cIndex })) } : v,
-      ),
+      prev.map((v, i) => {
+        if (i !== vIndex) return v
+        if (!allowMultipleCorrect) {
+          return { ...v, choices: v.choices.map((c, j) => ({ ...c, isCorrect: j === cIndex })) }
+        }
+        const choices = v.choices.map((c, j) => (j === cIndex ? { ...c, isCorrect: !c.isCorrect } : c))
+        return choices.some((c) => c.isCorrect) ? { ...v, choices } : v
+      }),
     )
 
   return (
@@ -78,6 +102,22 @@ export function QuestionEditor({
             <Input id="points" name="points" type="number" step="0.5" min="0" defaultValue={initialPoints} />
           </div>
         </div>
+        <label className="mt-4 flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="allowMultipleCorrect"
+            checked={allowMultipleCorrect}
+            onChange={(e) => setAllowMultiple(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            Select all that apply
+            <span className="mt-0.5 block text-xs text-slate-500">
+              Lets a variation mark more than one choice correct. A student must mark every correct
+              choice and nothing else to get credit for it — there is no partial credit.
+            </span>
+          </span>
+        </label>
       </Card>
 
       {variations.map((variation, vIndex) => (
@@ -136,8 +176,8 @@ export function QuestionEditor({
                       <span className="text-xs font-semibold text-slate-400">#{cIndex + 1}</span>
                       <label className="flex items-center gap-1.5 text-xs text-slate-700">
                         <input
-                          type="radio"
-                          name={`correct-${vIndex}`}
+                          type={allowMultipleCorrect ? 'checkbox' : 'radio'}
+                          name={allowMultipleCorrect ? undefined : `correct-${vIndex}`}
                           checked={choice.isCorrect}
                           onChange={() => setCorrect(vIndex, cIndex)}
                         />

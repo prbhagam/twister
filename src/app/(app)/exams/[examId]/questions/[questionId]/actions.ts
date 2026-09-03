@@ -34,6 +34,7 @@ export async function saveQuestion(_prev: SaveState, formData: FormData): Promis
   const examId = String(formData.get('examId'))
   const points = Number(formData.get('points') ?? 1)
   const title = String(formData.get('title') ?? '').trim() || null
+  const allowMultipleCorrect = formData.get('allowMultipleCorrect') === 'on'
   const question = await prisma.question.findUniqueOrThrow({ where: { id: questionId } })
   if (question.examId !== examId) return { error: 'Question does not belong to this exam.' }
   const user = await requireExamPermission(examId, 'question:edit')
@@ -51,8 +52,14 @@ export async function saveQuestion(_prev: SaveState, formData: FormData): Promis
     if (variation.choices.length < 2) {
       return { error: `Variation ${variation.label || i + 1} needs at least 2 answer choices.` }
     }
-    if (variation.choices.filter((c) => c.isCorrect).length !== 1) {
-      return { error: `Variation ${variation.label || i + 1} must have exactly one correct answer.` }
+    const correctCount = variation.choices.filter((c) => c.isCorrect).length
+    if (correctCount === 0) {
+      return { error: `Variation ${variation.label || i + 1} needs a correct answer marked.` }
+    }
+    if (correctCount > 1 && !allowMultipleCorrect) {
+      return {
+        error: `Variation ${variation.label || i + 1} has more than one correct answer marked, but "select all that apply" is off.`,
+      }
     }
   }
 
@@ -60,7 +67,7 @@ export async function saveQuestion(_prev: SaveState, formData: FormData): Promis
     await tx.variation.deleteMany({ where: { questionId } })
     await tx.question.update({
       where: { id: questionId },
-      data: { points: Number.isFinite(points) && points > 0 ? points : 1, title },
+      data: { points: Number.isFinite(points) && points > 0 ? points : 1, title, allowMultipleCorrect },
     })
     for (const [v, variation] of variations.entries()) {
       await tx.variation.create({

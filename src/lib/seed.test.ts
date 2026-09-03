@@ -9,7 +9,13 @@ import {
   type SeedQuestion,
 } from './seed'
 
-function makeQuestion(key: string, variationCount = 3, choiceCount = 5, pinLast = false): SeedQuestion {
+function makeQuestion(
+  key: string,
+  variationCount = 3,
+  choiceCount = 5,
+  pinLast = false,
+  correctIndices: number[] = [0],
+): SeedQuestion {
   return {
     key,
     refId: `run-${key}`,
@@ -18,7 +24,7 @@ function makeQuestion(key: string, variationCount = 3, choiceCount = 5, pinLast 
       refId: `run-${key}-v${v}`,
       choices: Array.from({ length: choiceCount }, (_, c) => ({
         refId: `run-${key}-v${v}-c${c}`,
-        isCorrect: c === 0,
+        isCorrect: correctIndices.includes(c),
         pinToLast: pinLast && c === choiceCount - 1,
       })),
     })),
@@ -95,7 +101,7 @@ describe('layout shape', () => {
   it('records the correct letter at the position the correct choice actually landed', () => {
     for (const entry of layout.entries) {
       const index = entry.choiceOrder.findIndex((id) => id.endsWith('-c0')) // c0 is the correct one
-      expect(entry.correctLetter).toBe(['A', 'B', 'C', 'D', 'E'][index])
+      expect(entry.correctLetters).toEqual([['A', 'B', 'C', 'D', 'E'][index]])
     }
   })
 
@@ -177,7 +183,37 @@ describe('short variations', () => {
     expect(byQuestion.get('run-s1')!.choiceCount).toBe(3)
     expect(byQuestion.get('run-s2')!.choiceCount).toBe(5)
     // A 3-choice question can never key to D or E.
-    expect(['A', 'B', 'C']).toContain(byQuestion.get('run-s1')!.correctLetter)
+    expect(['A', 'B', 'C']).toContain(byQuestion.get('run-s1')!.correctLetters[0])
+  })
+})
+
+describe('multiple correct answers', () => {
+  it('records every letter marked correct, wherever it landed after shuffling', () => {
+    const multi = Array.from({ length: 12 }, (_, i) => makeQuestion(`m${i + 1}`, 3, 5, false, [0, 2]))
+    for (let i = 0; i < 200; i++) {
+      const layout = buildLayout({
+        instructorSeed: SEED,
+        examId: EXAM,
+        gtId: `9050000${String(i).padStart(3, '0')}`,
+        questions: multi,
+      })
+      for (const entry of layout.entries) {
+        expect(entry.correctLetters).toHaveLength(2)
+        const correctIds = new Set(['-c0', '-c2'])
+        const landedLetters = entry.choiceOrder
+          .map((id, idx) => ({ id, letter: ['A', 'B', 'C', 'D', 'E'][idx] }))
+          .filter((c) => [...correctIds].some((suffix) => c.id.endsWith(suffix)))
+          .map((c) => c.letter)
+        expect(new Set(entry.correctLetters)).toEqual(new Set(landedLetters))
+      }
+    }
+  })
+
+  it('still reports a single-element array for an ordinary question', () => {
+    const layout = buildLayout({ instructorSeed: SEED, examId: EXAM, gtId: '903000101', questions: QUESTIONS })
+    for (const entry of layout.entries) {
+      expect(entry.correctLetters).toHaveLength(1)
+    }
   })
 })
 
