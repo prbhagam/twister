@@ -7,6 +7,7 @@ import { renderMarkdown } from './markdown'
 import type { RenderExam } from './pdf/exam-html'
 import { ExamRenderer, buildPrintFile, stageRenderAssets } from './pdf/renderer'
 import { byLastName } from './roster'
+import { isStudentExcluded, parseSectionCodes } from './sections'
 import { buildLayout, type LayoutEntry, type SeedQuestion } from './seed'
 
 export function outputRoot(): string {
@@ -68,16 +69,30 @@ export async function createRun(params: {
     )
   }
 
-  const students = (
-    await prisma.student.findMany({ where: { courseId: exam.courseId, droppedAt: null }, orderBy: { lastName: 'asc' } })
-  ).filter((s) => {
+  // Course-level exclusions outrank the per-run section picker: a section marked
+  // excluded on the course is withheld even if a stale form posts it back.
+  const excludedSections = parseSectionCodes(exam.course.excludedSections)
+  const enrolled = await prisma.student.findMany({
+    where: { courseId: exam.courseId, droppedAt: null },
+    orderBy: { lastName: 'asc' },
+  })
+  let excludedCount = 0
+  const students = enrolled.filter((s) => {
+    const sections = parseSectionCodes(s.sections)
+    if (isStudentExcluded(sections, excludedSections)) {
+      excludedCount++
+      return false
+    }
     if (params.sections.length === 0) return true
-    const sections = JSON.parse(s.sections) as string[]
     return sections.some((code) => params.sections.includes(code))
   })
 
   if (students.length === 0) {
-    throw new Error('No students match the selected sections. Import a roster first.')
+    throw new Error(
+      excludedCount > 0
+        ? `No students are left to generate: ${excludedCount} of ${enrolled.length} are in sections excluded on the course, and nobody else matches the selected sections.`
+        : 'No students match the selected sections. Import a roster first.',
+    )
   }
 
   // Seeding on an empty identifier would give every affected student the *same*
@@ -118,6 +133,9 @@ export async function createRun(params: {
       seedUsed: exam.instructorSeed,
       identityField,
       sections: JSON.stringify(params.sections),
+      // Snapshotted so a run records who was deliberately left out, even after the
+      // course's exclusion list changes.
+      configuration: JSON.stringify({ excludedSections, excludedStudents: excludedCount }),
       status: 'pending',
       studentCount: students.length,
       examTitle: exam.title,

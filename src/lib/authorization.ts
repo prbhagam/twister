@@ -53,3 +53,8 @@ export async function requireRunPermission(runId: string, permission: Permission
 export async function authorizeRunApi(runId: string, permission: Permission) {
   try { return await requireRunPermission(runId, permission) } catch { return null }
 }
+
+/** As `authorizeRunApi`, for routes that serve an exam rather than a run. */
+export async function authorizeExamApi(examId: string, permission: Permission) {
+  try { return await requireExamPermission(examId, permission) } catch { return null }
+}

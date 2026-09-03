@@ -66,16 +66,25 @@ loads a demo exam plus a roster, first drop your own export at
 
 ## Workflow
 
-1. **Create a course**, then import the GT roster CSV. Only `Role = Student` rows are
-   imported; sections are normalized (the duplicated `/i` variants collapse) and
-   re-importing updates students rather than duplicating them.
+1. **Create a course**, then import the roster — from Canvas by course ID, or as a GT
+   roster CSV. Only `Role = Student` rows are imported; sections are normalized (the
+   duplicated `/i` variants collapse) and re-importing updates students rather than
+   duplicating them. Sections are listed by their registrar label ("O1", "OIT", "HP"),
+   and any of them can be **excluded course-wide** so it is left out of every exam.
+   See *Sections* below.
 2. **Create an exam** and add questions. Each question holds 2–3 variations; each
    variation holds 2–5 answer choices in markdown (code blocks, tables, and LaTeX all
    render). Mark one correct answer, and optionally pin "None of the above" to last.
-   Questions can also be imported and exported as CSV.
-   A ready-made bank of 50 questions with 107 variations is at
-   `samples/sample-exam-50-questions.csv` if you just want something to test with.
-3. **Generate.** Pick sections, then run. This *freezes a snapshot* of every question
+   Questions can also be imported and exported as CSV, or downloaded as a
+   **question bank PDF** — every question with every variation and choice, correct
+   answers marked. That PDF is a complete answer key for the exam; it is an
+   instructor document, not a handout.
+   A ready-made bank of 50 questions with 100 variations (2 per question — every
+   question carries the same count, so the bank also works as a practice exam) is
+   at `samples/sample-exam-50-questions.csv` if you just want something to test
+   with.
+3. **Generate.** Pick sections, then run. Sections excluded on the course are not
+   offered here and are never generated for. This *freezes a snapshot* of every question
    and computes each student's layout. Editing questions afterwards can never change
    what has already been printed or how it grades.
 4. **Print.** Each student's PDF is page 1 a Gradescope bubble sheet with their name
@@ -235,6 +244,32 @@ it will most likely reject `MI`. Those students are reported individually instea
 aborting the run, and the sync stops early if five in a row fail, which means the
 token or assignment is wrong rather than one student being awkward.
 
+## Sections
+
+Section codes are stored as the full registrar code — `202608/CS/1301/O1/87196` — and
+displayed by the part people say out loud, `O1`. Both import paths produce the same
+code: the GT roster CSV carries it directly, and the Canvas import resolves each
+enrollment's numeric `course_section_id` through the course's section list, whose
+`name` is that same registrar code.
+
+On the course page each section shows its headcount and a checkbox that **withholds it
+from every exam in the course**. This is a course setting rather than a per-run choice:
+a cross-listed graduate section or an audit section that never sits your exams should
+stay out without anyone having to remember to untick it on each generation run.
+
+Ticking a section excludes every student in it, including students who are also in a
+section you did not tick. GT cross-lists a lecture with its recitation — an HP student
+is enrolled in both `HP` and `HP1` — so the opposite rule would mean ticking `HP` alone
+did nothing.
+
+Exclusions apply when a run is created and are snapshotted onto the run, so changing
+them never alters a run that has already been generated.
+
+**Refresh from Canvas** re-reads the section list and rewrites any section still stored
+as a bare numeric Canvas id into its registrar code, on students and on the exclusion
+list alike. Rosters imported before section names were resolved show sections as
+numbers until this is run once.
+
 ## Choosing the student identifier
 
 One value does three jobs, and they have to agree:
@@ -277,12 +312,13 @@ seed — enough to identify a stray page and recover its layout.
 
 | Command | What it does |
 |---|---|
-| `python3 scripts/make-sample-questions.py` | Regenerates `samples/sample-exam-50-questions.csv` — 50 questions, 107 variations, 1 point each, for testing |
+| `python3 scripts/make-sample-questions.py` | Regenerates `samples/sample-exam-50-questions.csv` — 50 questions, 100 variations (2 each), 1 point each, for testing |
 | `npm run verify` | Full end-to-end verification against a throwaway `verify.db`. Never touches your real database. |
 | `npm test` | Unit tests against the synthetic fixtures in `src/lib/__fixtures__/`. If real files are present in `assets/`, extra checks run against them too; otherwise those are skipped. |
 | `npm run db:seed` | Loads a 12-question demo exam and the sample roster |
 | `npx tsx scripts/preview-exam.ts` | Renders two sample exams without touching the database |
 | `npx tsx scripts/preview-bubble-sheet.ts` | Renders stamped bubble sheets for checking field placement |
+| `npx tsx scripts/preview-question-bank.ts [examId]` | Renders an exam's question-bank PDF to `output/`. Read-only. |
 
 These write to whichever database `DATABASE_URL` points at, so prefer `npm run
 verify` unless you mean to touch your real data:

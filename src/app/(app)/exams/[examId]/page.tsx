@@ -4,7 +4,8 @@ import { prisma } from '@/lib/db'
 import { validateExam } from '@/lib/exam-validation'
 import { IDENTITY_HINT, IDENTITY_LABEL, IDENTITY_FIELDS, parseIdentityField, studentsMissingIdentity } from '@/lib/identity'
 import { toPlainSummary } from '@/lib/markdown'
-import { sectionLabel } from '@/lib/roster'
+import { practiceVariantLabels } from '@/lib/practice-exam'
+import { excludedStudentCount, parseSectionCodes, summarizeSections } from '@/lib/sections'
 import { distinctExamCount, formatBig } from '@/lib/seed'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label, LinkButton, Notice, Textarea } from '@/components/ui'
 import { DangerZone } from '@/components/DangerZone'
@@ -12,6 +13,7 @@ import { deleteExam, updateExam } from '../../actions'
 import { addQuestion, approveAllQuestions, moveQuestion, transitionQuestionStatus } from './actions'
 import { CsvImport } from './CsvImport'
 import { GeneratePanel } from './GeneratePanel'
+import { PracticeGeneratePanel } from './PracticeGeneratePanel'
 import { requireExamPermission } from '@/lib/authorization'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +25,9 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
   const exam = await prisma.exam.findUnique({
     where: { id: examId },
     include: {
-      course: { include: { students: true } },
+      // Dropped students are off the roster and are never generated for, so they
+      // must not inflate the section counts the generate panel promises.
+      course: { include: { students: { where: { droppedAt: null } } } },
       questions: {
         where: { archivedAt: null },
         orderBy: { order: 'asc' },
@@ -44,15 +48,18 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
   const identityLocked = exam.runs.length > 0
   const missingIdentity = studentsMissingIdentity(exam.course.students, identityField)
 
-  const sectionCounts = new Map<string, number>()
-  for (const student of exam.course.students) {
-    for (const code of JSON.parse(student.sections) as string[]) {
-      sectionCounts.set(code, (sectionCounts.get(code) ?? 0) + 1)
-    }
-  }
-  const sections = [...sectionCounts]
-    .map(([code, count]) => ({ code, label: sectionLabel(code), count }))
-    .sort((a, b) => a.label.localeCompare(b.label))
+  // Sections excluded on the course are not offered here at all: they are a course
+  // policy, and showing them as pickable would imply generating for them is a
+  // per-run decision.
+  const excludedSections = parseSectionCodes(exam.course.excludedSections)
+  const sections = summarizeSections(exam.course.students, excludedSections).filter((s) => !s.excluded)
+  const excludedStudents = excludedStudentCount(exam.course.students, excludedSections)
+  const generatableStudents = exam.course.students.length - excludedStudents
+
+  // Only meaningful once the equal-variation-count check above has passed; when
+  // counts differ these are just the first question's variations and `errors`
+  // already blocks the buttons.
+  const variantLabels = practiceVariantLabels(exam.questions[0]?.variations ?? [])
 
   return (
     <div className="space-y-6">
@@ -70,6 +77,13 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
               title="Questions"
               subtitle={`${exam.questions.length} question${exam.questions.length === 1 ? '' : 's'} · ${exam.questions.reduce((n, q) => n + q.variations.length, 0)} variations`}
               action={<div className="flex gap-2">
+                <a
+                  href={`/api/exams/${exam.id}/question-bank.pdf`}
+                  title="Every question and variation with the correct answers marked. Instructor copy — do not hand out."
+                  className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Question bank (PDF)
+                </a>
                 <form action={approveAllQuestions}>
                   <input type="hidden" name="examId" value={exam.id} />
                   <Button type="submit" variant="secondary" disabled={errors.length > 0 || exam.questions.length === 0}>
@@ -188,21 +202,34 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
             </div>
           </Card>
 
-          <Card>
-            <CardHeader
-              title="Generate exams"
-              subtitle="Freezes a snapshot, then renders one PDF per student"
-            />
-            <GeneratePanel
-              examId={exam.id}
-              sections={sections}
-              totalStudents={exam.course.students.length}
-              blocked={errors.length > 0}
-              distinctExams={formatBig(distinctExamCount(exam.questions))}
-            />
-          </Card>
+          {exam.isPracticeExam ? (
+            <Card>
+              <CardHeader
+                title="Generate practice exams"
+                subtitle="No roster, no grading — one PDF per variant, rendered from the live questions"
+              />
+              <PracticeGeneratePanel examId={exam.id} variantLabels={variantLabels} blocked={errors.length > 0} />
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader
+                title="Generate exams"
+                subtitle="Freezes a snapshot, then renders one PDF per student"
+              />
+              <GeneratePanel
+                examId={exam.id}
+                sections={sections}
+                totalStudents={generatableStudents}
+                excludedSections={excludedSections.length}
+                excludedStudents={excludedStudents}
+                courseId={exam.courseId}
+                blocked={errors.length > 0}
+                distinctExams={formatBig(distinctExamCount(exam.questions))}
+              />
+            </Card>
+          )}
 
-          {exam.runs.length > 0 ? (
+          {!exam.isPracticeExam && exam.runs.length > 0 ? (
             <Card>
               <CardHeader title="Generation runs" />
               <ul className="divide-y divide-slate-100">
@@ -280,6 +307,27 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
               <div>
                 <Label htmlFor="title">Title</Label>
                 <Input id="title" name="title" defaultValue={exam.title} required />
+              </div>
+              <div>
+                <label className="flex items-start gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    name="isPracticeExam"
+                    defaultChecked={exam.isPracticeExam}
+                    disabled={exam.runs.length > 0}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 disabled:opacity-50"
+                  />
+                  <span>
+                    This is a practice exam
+                    <span className="mt-0.5 block text-xs text-slate-500">
+                      Skips the roster: generating renders one PDF per variant instead of one per
+                      student. Requires every question to have the same number of variations.
+                      {exam.runs.length > 0
+                        ? ' Locked because this exam already has generation runs.'
+                        : ''}
+                    </span>
+                  </span>
+                </label>
               </div>
               <div>
                 <Label htmlFor="instructorSeed">Instructor seed</Label>

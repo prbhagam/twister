@@ -13,8 +13,12 @@ export default async function DashboardPage() {
     where: user.role === 'OWNER' ? { archivedAt: null } : { archivedAt: null, memberships: { some: { userId: user.id, active: true } } },
     orderBy: { createdAt: 'desc' },
     include: {
-      _count: { select: { exams: true, students: { where: { droppedAt: null } } } },
-      exams: { orderBy: { updatedAt: 'desc' }, take: 4 },
+      // Deleting an exam archives it rather than destroying it, so both the count
+      // and the list have to exclude archived exams — the course page already
+      // does, and without this the dashboard keeps offering links to exams the
+      // instructor believes they deleted.
+      _count: { select: { exams: { where: { archivedAt: null } }, students: { where: { droppedAt: null } } } },
+      exams: { where: { archivedAt: null }, orderBy: { updatedAt: 'desc' }, take: 4 },
     },
   })
 
@@ -28,6 +32,8 @@ export default async function DashboardPage() {
         : { archivedAt: { not: null }, memberships: { some: { userId: user.id, active: true } } },
     orderBy: { archivedAt: 'desc' },
     include: {
+      // Unfiltered on purpose: these counts drive the permanent-delete warning,
+      // and purging the course destroys its archived exams and their runs too.
       _count: { select: { exams: true, students: { where: { droppedAt: null } } } },
       exams: { select: { _count: { select: { runs: true } } } },
     },

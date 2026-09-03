@@ -106,6 +106,51 @@ describe('layout shape', () => {
   })
 })
 
+describe('forcedVariantIndex', () => {
+  it('picks the given variation on every question instead of drawing randomly', () => {
+    const layout = buildLayout({
+      instructorSeed: SEED,
+      examId: EXAM,
+      gtId: 'practice:B',
+      questions: QUESTIONS,
+      forcedVariantIndex: 1,
+    })
+    for (const entry of layout.entries) {
+      expect(entry.runVariationId.endsWith('-v1')).toBe(true)
+    }
+  })
+
+  it('still shuffles choices and question order, reproducibly', () => {
+    const a = buildLayout({
+      instructorSeed: SEED,
+      examId: EXAM,
+      gtId: 'practice:A',
+      questions: QUESTIONS,
+      forcedVariantIndex: 0,
+    })
+    const b = buildLayout({
+      instructorSeed: SEED,
+      examId: EXAM,
+      gtId: 'practice:A',
+      questions: QUESTIONS,
+      forcedVariantIndex: 0,
+    })
+    expect(a).toEqual(b)
+
+    const authorOrder = QUESTIONS.map((q) => q.refId)
+    expect(a.entries.map((e) => e.runQuestionId)).not.toEqual(authorOrder)
+    for (const entry of a.entries) {
+      expect(new Set(entry.choiceOrder).size).toBe(entry.choiceOrder.length)
+    }
+  })
+
+  it('gives different variant indices distinct traces', () => {
+    const a = buildLayout({ instructorSeed: SEED, examId: EXAM, gtId: 'practice:A', questions: QUESTIONS, forcedVariantIndex: 0 })
+    const b = buildLayout({ instructorSeed: SEED, examId: EXAM, gtId: 'practice:B', questions: QUESTIONS, forcedVariantIndex: 1 })
+    expect(a.traceCode).not.toBe(b.traceCode)
+  })
+})
+
 describe('pinned choices', () => {
   it('always places a pinned choice last', () => {
     const pinned = Array.from({ length: 12 }, (_, i) => makeQuestion(`p${i + 1}`, 3, 5, true))

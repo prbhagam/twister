@@ -136,14 +136,24 @@ export function buildLayout(params: {
   examId: string
   gtId: string
   questions: SeedQuestion[]
+  /**
+   * Skips the random per-question variation draw and uses this index on every
+   * question instead. Only for practice exams, where every question is required to
+   * have the same number of variations, so "variant A" means index 0 everywhere.
+   * Choice and question-order shuffling still run as normal.
+   */
+  forcedVariantIndex?: number
 }): ExamLayout {
-  const { instructorSeed, examId, gtId, questions } = params
+  const { instructorSeed, examId, gtId, questions, forcedVariantIndex } = params
   const root = studentSeed(instructorSeed, examId, gtId)
 
   const drawn = questions.map((question) => {
     const rng = sfc32(questionSeed(root, question.key))
 
-    const variation = question.variations[randomInt(rng, question.variations.length)]
+    const variation =
+      forcedVariantIndex !== undefined
+        ? question.variations[forcedVariantIndex]
+        : question.variations[randomInt(rng, question.variations.length)]
 
     // Pinned choices ("None of the above") are held out of the permutation and
     // appended in author order, so they always land in the last slot(s).

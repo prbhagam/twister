@@ -3,10 +3,12 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { gradedRunsForCourse } from '@/lib/graded-export'
 import { sectionLabel } from '@/lib/roster'
+import { excludedStudentCount, parseSectionCodes, summarizeSections } from '@/lib/sections'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label } from '@/components/ui'
 import { DangerZone } from '@/components/DangerZone'
 import { createExam, deleteCourse } from '../../actions'
 import { RosterUpload } from './RosterUpload'
+import { SectionSettings } from './SectionSettings'
 import { requireCoursePermission } from '@/lib/authorization'
 
 export const dynamic = 'force-dynamic'
@@ -34,12 +36,9 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
   // their rows and graded exams as well, so the roster count would understate it.
   const totalStudents = await prisma.student.count({ where: { courseId: course.id } })
 
-  const sections = new Map<string, number>()
-  for (const student of course.students) {
-    for (const code of JSON.parse(student.sections) as string[]) {
-      sections.set(code, (sections.get(code) ?? 0) + 1)
-    }
-  }
+  const excludedSections = parseSectionCodes(course.excludedSections)
+  const sections = summarizeSections(course.students, excludedSections)
+  const excludedStudents = excludedStudentCount(course.students, excludedSections)
   const lastImport = course.rosterImports[0]
 
   return (
@@ -104,26 +103,18 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
               title="Roster"
               subtitle={
                 lastImport
-                  ? `${course.students.length} students · last imported ${lastImport.filename} on ${lastImport.createdAt.toLocaleDateString()}`
+                  ? `${course.students.length} students${excludedStudents ? ` · ${excludedStudents} in excluded sections` : ''} · last imported ${lastImport.filename} on ${lastImport.createdAt.toLocaleDateString()}`
                   : 'No roster imported yet'
               }
             />
             <RosterUpload courseId={course.id} />
 
-            {sections.size > 0 ? (
-              <div className="border-t border-slate-100 px-5 py-3">
-                <p className="mb-2 text-xs font-medium text-slate-600">Sections</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {[...sections]
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([code, count]) => (
-                      <Badge key={code}>
-                        {sectionLabel(code)} · {count}
-                      </Badge>
-                    ))}
-                </div>
-              </div>
-            ) : null}
+            <SectionSettings
+              courseId={course.id}
+              sections={sections}
+              canvasCourseId={course.canvasCourseId}
+              excludedStudents={excludedStudents}
+            />
 
             {course.students.length > 0 ? (
               <details className="border-t border-slate-100">

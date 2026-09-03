@@ -48,16 +48,20 @@ model Session {
 // ---------------------------------------------------------------- authoring side
 
 model Course {
-  id             String    @id @default(cuid())
-  name           String // "CS 1301"
-  title          String? // "Introduction to Computing"
-  term           String?
-  // Reserved for a future Canvas API integration; unused today. Kept so reviving it
-  // is a code change rather than a migration. See the `canvas-api` git tag.
-  canvasCourseId String?
-  createdAt      DateTime  @default(now())
-  archivedAt     DateTime?
-  archivedById   String?
+  id               String    @id @default(cuid())
+  name             String // "CS 1301"
+  title            String? // "Introduction to Computing"
+  term             String?
+  // Set by the Canvas roster import; the course the roster and section list are
+  // pulled from.
+  canvasCourseId   String?
+  // JSON array of normalized section codes withheld from every exam in this
+  // course. Applied at generation time, so excluding a section never touches
+  // students who already sat an exam.
+  excludedSections String    @default("[]")
+  createdAt        DateTime  @default(now())
+  archivedAt       DateTime?
+  archivedById     String?
 
   exams         Exam[]
   students      Student[]
@@ -98,6 +102,11 @@ model Exam {
   // Gradescope matches its roster on, or no scanned sheet will auto-match.
   // Changing it changes every student's exam, so it is snapshotted per run.
   identityField      String    @default("gtId")
+  // A practice exam skips the roster entirely: generation renders one paper per
+  // variant combination (using a sample identity) instead of one per student, and
+  // requires every question to carry the same number of variations so "variant A"
+  // means the same thing across the whole exam.
+  isPracticeExam     Boolean   @default(false)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   lifecycle          String    @default("DRAFT") // DRAFT | READY_FOR_REVIEW | APPROVED | GENERATED | LOCKED | GRADED | ARCHIVED
@@ -177,28 +186,28 @@ model RosterImport {
 }
 
 model Student {
-  id        String   @id @default(cuid())
-  courseId  String
-  importId  String?
+  id           String    @id @default(cuid())
+  courseId     String
+  importId     String?
   // Both identifiers are stored; which one seeds and gets stamped on the bubble
   // sheet is Exam.identityField. Either may be absent depending on the source:
   // a Canvas token without SIS permission yields no gtId, and a roster CSV
   // without a GT Account column yields no username.
-  gtId      String?
-  username  String?
+  gtId         String?
+  username     String?
   canvasUserId String?
-  firstName String
-  lastName  String
-  email     String
-  sections  String   @default("[]") // JSON array of normalized section codes
-  role      String   @default("Student")
-  createdAt DateTime @default(now())
+  firstName    String
+  lastName     String
+  email        String
+  sections     String    @default("[]") // JSON array of normalized section codes
+  role         String    @default("Student")
+  createdAt    DateTime  @default(now())
   // Set when a re-import no longer finds the student in the source roster: they
   // dropped. Never a hard delete — StudentExam cascades from Student, so deleting
   // a dropped student would erase exams they already sat and grades already
   // recorded. Dropped students are filtered out of rosters, counts, and
   // generation; a student who re-enrols has this cleared on the next import.
-  droppedAt DateTime?
+  droppedAt    DateTime?
 
   course       Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
   import       RosterImport? @relation(fields: [importId], references: [id], onDelete: SetNull)

@@ -1,10 +1,8 @@
 question_number,points,variation_label,prompt,choice_1,choice_2,choice_3,choice_4,choice_5,correct,pin_last
 1,1,A,What is the type of `3 / 1` in Python 3?,`int`,`float`,`str`,`bool`,None of the above,2,5
 1,1,B,What is the type of `3 // 1`?,`int`,`float`,`str`,`bool`,None of the above,1,5
-1,1,C,What is the type of `3 == 1`?,`int`,`float`,`str`,`bool`,None of the above,4,5
 2,1,A,What does `int('7') + 1` evaluate to?,`8`,`'71'`,`71`,`TypeError`,`ValueError`,1,
 2,1,B,What does `'7' + 1` evaluate to?,`8`,`'71'`,`71`,`TypeError`,`ValueError`,4,
-2,1,C,What does `'7' * 2` evaluate to?,`14`,`'77'`,`'7 7'`,`TypeError`,`ValueError`,2,
 3,1,A,What does `float('3.5')` return?,`3.5`,`'3.5'`,`3`,`ValueError`,`TypeError`,1,
 3,1,B,What does `int('3.5')` return?,`3.5`,`3`,`4`,`ValueError`,`TypeError`,4,
 4,1,A,Which of these is a valid Python variable name?,`2nd_place`,`second place`,`second_place`,`class`,`second-place`,3,
@@ -13,7 +11,6 @@ question_number,points,variation_label,prompt,choice_1,choice_2,choice_3,choice_
 5,1,B,What does `bool(None)` evaluate to?,`True`,`False`,`None`,`0`,`TypeError`,2,
 6,1,A,What does `7 // 2` evaluate to?,`3`,`3.5`,`4`,`1`,`TypeError`,1,
 6,1,B,What does `7 % 2` evaluate to?,`0`,`1`,`3`,`3.5`,`TypeError`,2,
-6,1,C,What does `7 / 2` evaluate to?,`3`,`3.5`,`4`,`1`,`TypeError`,2,
 7,1,A,What does `-7 // 2` evaluate to?,`-3`,`-4`,`-3.5`,`3`,`4`,2,
 7,1,B,What does `-7 % 3` evaluate to?,`-1`,`1`,`2`,`-2`,`0`,3,
 8,1,A,What does `2 ** 3 ** 2` evaluate to?,`64`,`512`,`12`,`36`,`TypeError`,2,
@@ -28,7 +25,6 @@ question_number,points,variation_label,prompt,choice_1,choice_2,choice_3,choice_
 12,1,B,What does `5 if 1 else 6` evaluate to?,`5`,`6`,`0`,`True`,`SyntaxError`,1,
 13,1,A,What does `'computing'[0:4]` evaluate to?,`'comp'`,`'compu'`,`'omp'`,`'c'`,`IndexError`,1,
 13,1,B,What does `'computing'[-3:]` evaluate to?,`'ing'`,`'ting'`,`'ng'`,`'comput'`,`IndexError`,1,
-13,1,C,What does `'computing'[::2]` evaluate to?,`'cmuig'`,`'optn'`,`'computing'`,`'gnitupmoc'`,`TypeError`,1,
 14,1,A,What does `'abc'[::-1]` evaluate to?,`'cba'`,`'abc'`,`'a'`,`''`,`IndexError`,1,
 14,1,B,What does `'abc'[3]` evaluate to?,`'c'`,`''`,`None`,`IndexError`,`KeyError`,4,
 15,1,A,What does `len('CS 1301')` return?,`6`,`7`,`8`,`4`,None of the above,2,5
@@ -53,12 +49,6 @@ print(len(xs))
 xs = [4, 5]
 print(len(xs))
 ```",`1`,`2`,`3`,`TypeError`,None of the above,2,5
-20,1,C,"What does the following print?
-
-```python
-xs = []
-print(len(xs))
-```",`0`,`1`,`None`,`TypeError`,None of the above,1,5
 21,1,A,"What does the following print?
 
 ```python
@@ -111,12 +101,6 @@ for i in range(2, 10, 3):
 for i in range(0, 10, 2):
     print(i)
 ```",`2`,`4`,`5`,`10`,None of the above,3,5
-28,1,C,"How many times does the body of this loop run?
-
-```python
-for i in range(5):
-    print(i)
-```",`4`,`5`,`6`,`0`,None of the above,2,5
 29,1,A,"What is the last value printed?
 
 ```python
@@ -290,13 +274,6 @@ def f(n):
         n = n * 2
     return n
 ```",`1`,`2`,`None`,`0`,None of the above,1,5
-39,1,C,"What does `f(4)` return?
-
-```python
-def f(n):
-    if n > 2:
-        n = n * 2
-```",`4`,`8`,`None`,`2`,None of the above,3,5
 40,1,A,"What does the following print?
 
 ```python
