@@ -1,3 +1,4 @@
+import { EXAM_PRINT_PALETTE, codeThemeCss } from '../print-theme'
 import { LETTERS } from '../seed'
 
 export interface RenderQuestion {
@@ -28,23 +29,18 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Print stylesheet. Two rules matter more than the rest:
+ * Print stylesheet. Three rules matter more than the rest:
  *  - `break-inside: avoid` on each question, so a prompt never splits from its
  *    choices across a page turn.
  *  - `@page` margins sized to leave room for the running footer.
+ *  - Grayscale throughout, from PRINT_PALETTE. This is the document that gets run
+ *    off a departmental laser printer a few hundred times at a stretch, so every
+ *    value here is chosen for toner rather than for a screen.
  */
 const STYLES = String.raw`
   @page { size: Letter; margin: 0.7in 0.75in 0.85in 0.75in; }
 
-  :root {
-    --ink: #16191d;
-    --muted: #5c6470;
-    --rule: #d9dde3;
-    --accent: #1c3f94;
-    --surface: #f5f7fa;
-    --sans: "Helvetica Neue", Helvetica, Arial, "Segoe UI", system-ui, sans-serif;
-    --mono: "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
-  }
+  :root {${EXAM_PRINT_PALETTE}  }
 
   * { box-sizing: border-box; }
 
@@ -59,7 +55,7 @@ const STYLES = String.raw`
 
   /* --- cover page --- */
   .cover { break-after: page; padding-top: 0.9in; }
-  .cover .rule { width: 2.2in; height: 3pt; background: var(--accent); margin-bottom: 0.28in; }
+  .cover .rule { width: 2.2in; height: 3pt; background: var(--rule-strong); margin-bottom: 0.28in; }
   .cover h1 {
     font-size: 27pt;
     font-weight: 700;
@@ -76,6 +72,7 @@ const STYLES = String.raw`
 
   .cover .who {
     background: var(--surface);
+    border: 0.5pt solid var(--rule);
     border-radius: 6pt;
     padding: 0.26in 0.3in;
     margin-bottom: 0.45in;
@@ -117,7 +114,7 @@ const STYLES = String.raw`
   .qnum {
     font-size: 12pt;
     font-weight: 700;
-    color: var(--accent);
+    color: var(--ink);
     min-width: 0.28in;
     letter-spacing: -0.01em;
   }
@@ -143,12 +140,14 @@ const STYLES = String.raw`
     margin: 0.055in 0;
     break-inside: avoid;
   }
+  /* The letter is what a student carries across to the bubble sheet, so it is the
+     last thing that should be set in a soft grey. */
   .choice-letter {
     flex: none;
     width: 0.2in;
     font-weight: 700;
     font-size: 10pt;
-    color: var(--muted);
+    color: var(--ink);
     line-height: 1.55;
   }
   .choice-body > :first-child { margin-top: 0; }
@@ -167,10 +166,11 @@ const STYLES = String.raw`
     break-inside: avoid;
   }
   pre code { font: inherit; background: none; padding: 0; }
+  ${codeThemeCss('print')}
   code {
     font-family: var(--mono);
     font-size: 0.88em;
-    background: #eceff3;
+    background: var(--surface);
     padding: 1pt 3pt;
     border-radius: 3pt;
   }
@@ -199,7 +199,10 @@ const STYLES = String.raw`
  * reassemble it — and the trace code alone recovers the exact layout from the run.
  */
 export function footerTemplate(exam: RenderExam): string {
-  return `<div style="width:100%;font:7.5pt 'Helvetica Neue',Helvetica,Arial,sans-serif;color:#8a919c;letter-spacing:0.02em;padding:0 0.75in;display:flex;justify-content:space-between;">
+  // Chromium renders header/footer templates in an isolated document that inherits
+  // none of the page CSS, so the palette's grey is inlined here by hand. At 7.5pt
+  // the old blue-grey was the first thing to break up on a photocopy.
+  return `<div style="width:100%;font:7.5pt 'Helvetica Neue',Helvetica,Arial,sans-serif;color:#5f5f5f;letter-spacing:0.02em;padding:0 0.75in;display:flex;justify-content:space-between;">
     <span>${escapeHtml(exam.studentName)} &middot; ${escapeHtml(exam.gtId)}</span>
     <span>${escapeHtml(exam.examTitle)}</span>
     <span>${escapeHtml(exam.traceCode)} &middot; <span class="pageNumber"></span>/<span class="totalPages"></span></span>

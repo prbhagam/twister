@@ -6,6 +6,7 @@ import remarkMath from 'remark-math'
 import remarkParse from 'remark-parse'
 import remarkRehype from 'remark-rehype'
 import { unified } from 'unified'
+import { CODE_VAR_PREFIX, PRINT_CODE_THEME, SCREEN_CODE_THEME } from './print-theme'
 
 /**
  * One pipeline, used by both the editor preview and the PDF renderer, so what you
@@ -22,8 +23,21 @@ function build() {
     .use(remarkMath)
     .use(remarkRehype)
     .use(rehypeShiki, {
-      // Light theme only: these end up on paper.
-      theme: 'github-light',
+      // Both palettes, on every token, as CSS custom properties.
+      //
+      // One render has to serve two audiences that want opposite things. The
+      // printed booklet needs grayscale, distinguished by weight rather than hue,
+      // because a colour theme's tokens all flatten to the same grey on a laser
+      // printer. The graded report, question bank, and review UI are read on
+      // screen and want the colour. And the render is shared whether we like it or
+      // not: createRun freezes this HTML into the run snapshot, and the booklet and
+      // the report both read that one frozen copy.
+      //
+      // So neither palette is baked in. Each document selects one with
+      // `codeThemeCss`, and a document that forgets gets flat, uncoloured code.
+      themes: { screen: SCREEN_CODE_THEME, print: PRINT_CODE_THEME },
+      defaultColor: false,
+      cssVariablePrefix: CODE_VAR_PREFIX,
       fallbackLanguage: 'text',
     })
     // rehype-katex never throws on bad LaTeX — it renders the error inline, which

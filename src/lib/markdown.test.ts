@@ -6,8 +6,14 @@ describe('renderMarkdown', () => {
     const html = await renderMarkdown('```python\ndef f(xs):\n    return len(xs)\n```')
     expect(html).toContain('<pre')
     expect(html).toContain('shiki')
-    // Tokens must be individually colored or the printout is a grey wall of code.
-    expect(html).toMatch(/style="color:#[0-9A-Fa-f]{6}"/)
+    // Tokens must be individually styled or the printout is a flat wall of code.
+    // Both palettes ride along on every token as custom properties — colour for the
+    // screen, greyscale for the printed booklet — and each document picks one.
+    expect(html).toMatch(/--twister-screen:#[0-9A-Fa-f]{6}/)
+    expect(html).toMatch(/--twister-print:#[0-9A-Fa-f]{6}/)
+    // The booklet is printed in black and white, so its distinction has to survive
+    // without hue: weight and slant carry it.
+    expect(html).toContain('--twister-print-font-weight:bold')
     expect(html).toContain('def')
   })
 
