@@ -1,6 +1,12 @@
 import { PDFDocument } from 'pdf-lib'
 import { describe, expect, it } from 'vitest'
-import { addScantronBackPage, padBooklet } from './renderer'
+import {
+  BLANK_PAGE_NOTICE,
+  SCANTRON_CLEAR_BAND_IN,
+  SCANTRON_NOTICE_BASELINE_IN,
+  addScantronBackPage,
+  padBooklet,
+} from './renderer'
 import type { RenderExam } from './exam-html'
 
 const exam: RenderExam = {
@@ -25,7 +31,7 @@ async function booklet(bodyPages: number) {
   const doc = await body(bodyPages)
   doc.insertPage(0, doc.addPage([612, 792])) // stands in for the bubble sheet
   doc.removePage(doc.getPageCount() - 1)
-  addScantronBackPage(doc)
+  await addScantronBackPage(doc)
   await padBooklet(doc, exam)
   return doc
 }
@@ -33,8 +39,34 @@ async function booklet(bodyPages: number) {
 describe('addScantronBackPage', () => {
   it('adds exactly one page', async () => {
     const doc = await body(5)
-    addScantronBackPage(doc)
+    await addScantronBackPage(doc)
     expect(doc.getPageCount()).toBe(6)
+  })
+
+  it('places its notice in the template\'s ink-free band', async () => {
+    // This is the one page in the packet that goes through a scanner. Duplex
+    // printing preserves vertical position, so the notice has to sit behind the
+    // strip of the front carrying no ink — otherwise show-through on thin stock
+    // lands inside an answer bubble, and the sheet grades wrong.
+    expect(SCANTRON_NOTICE_BASELINE_IN).toBeGreaterThan(SCANTRON_CLEAR_BAND_IN.top)
+    expect(SCANTRON_NOTICE_BASELINE_IN).toBeLessThan(SCANTRON_CLEAR_BAND_IN.bottom)
+  })
+
+  it('actually draws the notice, rather than leaving the page bare', async () => {
+    const doc = await body(2)
+    await addScantronBackPage(doc)
+
+    // A page nothing has been drawn on carries no content stream at all, so this
+    // separates "the notice was drawn" from "a blank page was inserted" — which is
+    // exactly what this page used to be.
+    expect(doc.getPage(1).node.Contents()).toBeDefined()
+    expect(doc.getPage(2).node.Contents()).toBeUndefined()
+  })
+
+  it('uses the same wording as the parity filler at the back', () => {
+    // Two different sentences for two blank pages in one packet would read as two
+    // different problems.
+    expect(BLANK_PAGE_NOTICE).toBe('This page is intentionally blank.')
   })
 
   it('inserts at index 1, leaving the bubble sheet as page 1', async () => {
@@ -43,7 +75,7 @@ describe('addScantronBackPage', () => {
     const first = doc.addPage([612, 792])
     first.drawText('SHEET')
     doc.addPage([400, 400]) // a distinguishable body page
-    addScantronBackPage(doc)
+    await addScantronBackPage(doc)
 
     expect(doc.getPageCount()).toBe(3)
     expect(doc.getPage(0).getSize().width).toBeCloseTo(612, 1) // bubble sheet

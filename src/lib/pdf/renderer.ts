@@ -41,19 +41,57 @@ export interface RenderedExam {
 }
 
 /**
+ * The one horizontal band of the Gradescope template that carries no ink at all —
+ * below the Marking Instructions block, above the first row of answer bubbles.
+ *
+ * Measured off the template itself by rasterising it at 100dpi and counting dark
+ * pixels per row: every band from 2.50in to 2.90in comes back at exactly zero,
+ * with the header block ending at 2.50 and the answer grid starting at 2.90.
+ */
+export const SCANTRON_CLEAR_BAND_IN = { top: 2.5, bottom: 2.9 } as const
+
+/** Where the notice sits, in inches from the top edge. Inside the clear band. */
+export const SCANTRON_NOTICE_BASELINE_IN = 2.72
+
+export const BLANK_PAGE_NOTICE = 'This page is intentionally blank.'
+
+/**
  * Puts a blank page behind the bubble sheet so it occupies a whole sheet alone.
  *
  * Students tear the scantron off the packet before starting. Printed duplex, page 2
  * lands on the back of page 1, so without this the cover page leaves with the
  * scantron — and whatever is on the back gets scanned along with it.
  *
- * Deliberately empty: no footer, no notice. Anything printed here could end up in
- * the scan and interfere with how Gradescope registers the sheet.
+ * The page carries the same notice as the parity filler, so a student flipping the
+ * packet does not think their copy was misprinted. Two constraints shape where it
+ * goes, because this sheet is the one page that gets fed through a scanner:
+ *
+ *  - It sits in `SCANTRON_CLEAR_BAND_IN`. Duplex printing preserves vertical
+ *    position, so ink here backs onto the only part of the front with nothing on
+ *    it — well clear of every bubble, and of the fiducial markers Gradescope
+ *    registers against. Any show-through on thin stock lands in white space rather
+ *    than inside an answer position.
+ *  - It carries no footer, unlike the parity filler. A footer sits at the foot of
+ *    the page, which is exactly where the front's bottom fiducial row and
+ *    Gradescope's own footer are — the densest, most scan-critical band on the
+ *    sheet.
  */
-export function addScantronBackPage(doc: PDFDocument): void {
-  doc.insertPage(1, doc.addPage(SHEET_SIZE))
+export async function addScantronBackPage(doc: PDFDocument): Promise<void> {
+  const page = doc.addPage(SHEET_SIZE)
+  doc.insertPage(1, page)
   // addPage appended a second copy; drop it, keeping only the inserted one.
   doc.removePage(doc.getPageCount() - 1)
+
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const [width, height] = SHEET_SIZE
+  const size = 11
+  page.drawText(BLANK_PAGE_NOTICE, {
+    x: (width - font.widthOfTextAtSize(BLANK_PAGE_NOTICE, size)) / 2,
+    y: height - SCANTRON_NOTICE_BASELINE_IN * 72,
+    size,
+    font,
+    color: rgb(0.29, 0.29, 0.29),
+  })
 }
 
 /**
@@ -74,19 +112,20 @@ export async function padBooklet(doc: PDFDocument, exam: RenderExam): Promise<vo
   const page = doc.addPage(SHEET_SIZE)
   const [width, height] = SHEET_SIZE
 
-  const notice = 'This page is intentionally blank.'
+  // Neutral greys matched to the print palette: the blue-greys these replaced were
+  // mixed for a screen and came out washed out on a laser printer.
   const noticeSize = 11
-  page.drawText(notice, {
-    x: (width - font.widthOfTextAtSize(notice, noticeSize)) / 2,
+  page.drawText(BLANK_PAGE_NOTICE, {
+    x: (width - font.widthOfTextAtSize(BLANK_PAGE_NOTICE, noticeSize)) / 2,
     y: height / 2,
     size: noticeSize,
     font,
-    color: rgb(0.42, 0.45, 0.5),
+    color: rgb(0.29, 0.29, 0.29),
   })
 
-  // Same three-part footer the rendered pages carry.
+  // Same three-part footer the rendered pages carry, at the same grey.
   const footerSize = 7.5
-  const footer = rgb(0.54, 0.57, 0.61)
+  const footer = rgb(0.37, 0.37, 0.37)
   const margin = 54
   page.drawText(`${toWinAnsi(exam.studentName)} · ${toWinAnsi(exam.gtId)}`, {
     x: margin,
@@ -171,7 +210,7 @@ export class ExamRenderer {
 
     const doc = await PDFDocument.load(bodyPdf)
     await this.stamper.prependTo(doc, { name: exam.studentName, gtId: exam.gtId })
-    addScantronBackPage(doc)
+    await addScantronBackPage(doc)
     await padBooklet(doc, exam)
 
     return { pdf: await doc.save(), pageCount: doc.getPageCount() }
