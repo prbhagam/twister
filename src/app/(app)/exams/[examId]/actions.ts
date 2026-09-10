@@ -81,6 +81,9 @@ export async function moveQuestion(formData: FormData) {
   const neighbour = await prisma.question.findFirst({
     where: {
       examId: question.examId,
+      // Retired questions keep their old order values, so an unfiltered lookup
+      // would swap with one of those and the move would look like a no-op.
+      archivedAt: null,
       order: direction === -1 ? { lt: question.order } : { gt: question.order },
     },
     orderBy: { order: direction === -1 ? 'desc' : 'asc' },

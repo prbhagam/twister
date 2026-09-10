@@ -8,7 +8,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ exa
   const exam = await prisma.exam.findUnique({
     where: { id: examId },
     include: {
+      // "Live" means what the exam is now: retired questions from a superseded
+      // import stay in the table for grading history, but exporting them would
+      // hand back a file that re-imports the old bank on top of the new one.
       questions: {
+        where: { archivedAt: null },
         orderBy: { order: 'asc' },
         include: {
           variations: { orderBy: { order: 'asc' }, include: { choices: { orderBy: { order: 'asc' } } } },
