@@ -1,3 +1,5 @@
+import { codeThemeCss } from '../print-theme'
+
 export interface BankChoice {
   /** Authoring position, 1-based — the same number the CSV calls `choice_1`. */
   number: number
@@ -120,6 +122,7 @@ export const BANK_STYLES = String.raw`
   /* --- markdown --- */
   pre { background: var(--surface); border: 0.5pt solid var(--rule); border-radius: 4pt; padding: 6pt 8pt; margin: 0.07in 0; font: 8.5pt/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; break-inside: avoid; }
   pre code { font: inherit; background: none; padding: 0; }
+  ${codeThemeCss('screen')}
   code { font-family: var(--mono); font-size: 0.88em; background: #edf0f3; padding: 0.5pt 2.5pt; border-radius: 2pt; }
   table { border-collapse: collapse; margin: 0.07in 0; font-size: 9.5pt; }
   th, td { border: 0.5pt solid var(--rule); padding: 2.5pt 6pt; text-align: left; }

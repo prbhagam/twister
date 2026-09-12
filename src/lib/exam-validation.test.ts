@@ -75,3 +75,20 @@ describe('select-all-that-apply validation', () => {
     expect(issues.some((i) => i.message.includes('no correct answer'))).toBe(true)
   })
 })
+
+describe('duplicate question numbers', () => {
+  it('accepts a bank where every question has its own number', () => {
+    expect(hasBlockingErrors(validateExam(makeExam([2, 2, 2])))).toBe(false)
+  })
+
+  // The shape a retired question bank takes when it is snapshotted alongside the
+  // live one: the same numbers twice over, which would print every question twice.
+  it('blocks a bank that repeats a question number', () => {
+    const exam = makeExam([2, 2])
+    exam.questions.push({ ...exam.questions[0], id: 'q1-stale' })
+
+    const issues = validateExam(exam)
+    expect(hasBlockingErrors(issues)).toBe(true)
+    expect(issues.some((i) => i.message.includes('appear more than once'))).toBe(true)
+  })
+})

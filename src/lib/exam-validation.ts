@@ -44,6 +44,26 @@ export function validateExam(exam: ValidatableExam): ValidationIssue[] {
     return issues
   }
 
+  // Two questions claiming the same number means the caller handed over a bank it
+  // should not have — most likely retired questions alongside the live ones. Left
+  // unchecked it prints silently: every student gets both copies, at two different
+  // positions, and nothing about the paper says which one is current.
+  const seenOrders = new Set<number>()
+  const duplicateOrders = new Set<number>()
+  for (const question of exam.questions) {
+    if (seenOrders.has(question.order)) duplicateOrders.add(question.order)
+    seenOrders.add(question.order)
+  }
+  if (duplicateOrders.size > 0) {
+    issues.push({
+      level: 'error',
+      message:
+        `${exam.questions.length} questions share only ${seenOrders.size} distinct question number(s) — ` +
+        `number(s) ${[...duplicateOrders].sort((a, b) => a - b).join(', ')} appear more than once. ` +
+        'Each question must have its own number.',
+    })
+  }
+
   for (const question of exam.questions) {
     const where = `Question ${question.order}`
 

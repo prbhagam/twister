@@ -46,7 +46,12 @@ export async function createRun(params: {
     where: { id: params.examId },
     include: {
       course: true,
+      // Archived questions are still rows on the exam — a whole-exam CSV import
+      // retires the old list rather than deleting it, so grading of an earlier run
+      // keeps working. They must never be snapshotted into a *new* run, or the
+      // paper carries every retired question alongside the current ones.
       questions: {
+        where: { archivedAt: null },
         orderBy: { order: 'asc' },
         include: {
           variations: {
