@@ -211,7 +211,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
                   <DownloadLink
                     href={`/api/runs/${run.id}/by-session.zip`}
                     title="Exams by session (ZIP)"
-                    note="One folder per signup session, plus not-signed-up and exceptions"
+                    note="One folder per signup session, each led by a cover sheet and proctor instructions"
                   />
                 </>
               ) : null}
