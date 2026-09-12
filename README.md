@@ -219,10 +219,50 @@ date, time, and location), one per exception (named by its label), and one for
 students who never signed up:
 
 ```
+10-27-2026 1-35 PM (Scheller 101)/00-COVER-SHEET.pdf
+10-27-2026 1-35 PM (Scheller 101)/01-INSTRUCTIONS.pdf
 10-27-2026 1-35 PM (Scheller 101)/Afeworki-Lulya-903977463.pdf
+OMSCS Seminar/00-COVER-SHEET.pdf
+OMSCS Seminar/01-INSTRUCTIONS.pdf
 OMSCS Seminar/Altshuler-Roman-904205135.pdf
 Not signed up/Abanador-Alessandra-904246722.pdf
 ```
+
+### The two sheets on top of each session
+
+Every session and exception folder leads with two generated PDFs, named so that an
+alphabetical listing puts them first and second, ahead of the papers. They are used
+in different places, which is what their layouts are built around.
+
+**`00-COVER-SHEET.pdf`** stays with the exam file — the TA takes the papers and the
+instruction sheet, not this page. One page: the exam name, the session's date, time
+and location, the number of papers in the packet, and the chain-of-custody record. A
+TA signs and dates **1 · Signed out** when they collect the papers and **2 · Signed
+in** when they bring the completed papers back, with a line there for anything that
+went wrong. An exception bucket has no parsed date, time or location, so those print
+as rules to fill in by hand.
+
+**`01-INSTRUCTIONS.pdf`** is the sheet that travels with the papers. The **roster is
+the front page** — it is what a TA works from while students file in — with a tick
+box, name and GT ID each, in two columns, and a short write-in block at the end of
+the list for anyone who turns up without being on it. The **proctor script is on the
+back**, set in two columns: before the session, checking students in, starting,
+during, ending, after. It is padded to an even page count so printing it duplex never
+backs it with the next document, and a session too big for one roster page gets extra
+pages rather than a truncated list.
+
+Neither sheet carries run identifiers or a generation timestamp; they describe the
+session, not the print job. Each student's own paper already carries its trace code.
+
+The script itself is `TA_INSTRUCTIONS` in `src/lib/pdf/session-packet.ts` — a plain
+list of headings and numbered items, meant to be edited directly as a course's own
+rules settle. Tests keep it to one side of one sheet, check it still points a TA at
+the write-in block that actually exists, and reject any character that would not
+survive to paper.
+
+The not-signed-up folder gets neither sheet: nobody is proctoring that pile, and a
+signed custody sheet describing a session that is not happening would say something
+untrue.
 
 ## Deleting things
 
