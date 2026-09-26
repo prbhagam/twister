@@ -389,6 +389,12 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
                 <div>
                   <Label htmlFor="versionNames">Version names</Label>
                   <Textarea
+                    // A whole-exam CSV import also sets these names, from another form
+                    // on this same page. An uncontrolled field only reads defaultValue
+                    // when it mounts, so without the key it kept showing the old list
+                    // after an import — and "Save settings" then wrote that stale list
+                    // straight back over the imported one.
+                    key={exam.versionNames}
                     id="versionNames"
                     name="versionNames"
                     rows={4}
