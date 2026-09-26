@@ -7,6 +7,7 @@ import { toPlainSummary } from '@/lib/markdown'
 import { practiceVariantLabels } from '@/lib/practice-exam'
 import { excludedStudentCount, parseSectionCodes, summarizeSections } from '@/lib/sections'
 import { distinctExamCount, formatBig } from '@/lib/seed'
+import { parseStoredVersionNames } from '@/lib/version-names'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label, LinkButton, Notice, Textarea } from '@/components/ui'
 import { DangerZone } from '@/components/DangerZone'
 import { deleteExam, updateExam } from '../../actions'
@@ -198,7 +199,7 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
               </div>
               <CsvImport
                 examId={exam.id}
-                hint="Whole-exam CSV (question_number, points, allow_multiple, variation_label, prompt, choice_1…choice_5, correct, pin_last). correct may list more than one index only when allow_multiple is set on the question's first row. This replaces every question in the exam."
+                hint="Whole-exam CSV (question_number, points, allow_multiple, variation_label, prompt, choice_1…choice_5, correct, pin_last, version_name). correct may list more than one index only when allow_multiple is set on the question's first row. version_name is optional: one cover version name per cell, read down the column, independent of the question on that row — an empty column clears the exam's names, a missing one leaves them alone. This replaces every question in the exam."
               />
             </div>
           </Card>
@@ -384,6 +385,24 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
                   placeholder="You have 50 minutes. Mark all answers on the bubble sheet."
                 />
               </div>
+              {exam.isPracticeExam ? null : (
+                <div>
+                  <Label htmlFor="versionNames">Version names</Label>
+                  <Textarea
+                    id="versionNames"
+                    name="versionNames"
+                    rows={4}
+                    defaultValue={parseStoredVersionNames(exam.versionNames).join('\n')}
+                    placeholder={'Version Monica\nVersion Rachel\nVersion We Were on a Break'}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    One per line, printed exactly as written under the title on each student&apos;s cover.
+                    Each student gets one at random when a run is created, and names are reused — they are
+                    decoration only and never tell two papers apart. Also set by the version_name column
+                    of a whole-exam questions CSV.
+                  </p>
+                </div>
+              )}
               <Button type="submit" className="w-full">
                 Save settings
               </Button>

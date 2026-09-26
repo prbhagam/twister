@@ -83,6 +83,17 @@ loads a demo exam plus a roster, first drop your own export at
    question carries the same count, so the bank also works as a practice exam),
    including 2 select-all-that-apply questions, is at
    `samples/sample-exam-50-questions.csv` if you just want something to test with.
+
+   **Version names** are optional decoration for the cover: a list such as
+   "Version Monica", "Version We Were on a Break", one of which is printed under the
+   title on each student's paper. Set them one per line in the exam's settings, or in
+   the whole-exam CSV's last column, `version_name` — one name per cell, read down the
+   column, unrelated to the question on that row (a row carrying only a name is fine).
+   A CSV with that column replaces the list, and an empty column clears it; a CSV
+   without the column leaves the names alone. Each student's name is drawn from their
+   own seed like everything else, so a reprint gets the same name, and it is recorded
+   with the run. Names are reused across students and say nothing about which paper
+   anyone has — they never tell two papers apart, and grading never looks at them.
 3. **Generate.** Pick sections, then run. Sections excluded on the course are not
    offered here and are never generated for. This *freezes a snapshot* of every question
    and computes each student's layout. Editing questions afterwards can never change

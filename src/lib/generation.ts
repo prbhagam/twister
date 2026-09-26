@@ -8,7 +8,8 @@ import type { RenderExam } from './pdf/exam-html'
 import { ExamRenderer, buildPrintFile, stageRenderAssets } from './pdf/renderer'
 import { byLastName } from './roster'
 import { isStudentExcluded, parseSectionCodes } from './sections'
-import { buildLayout, type LayoutEntry, type SeedQuestion } from './seed'
+import { buildLayout, pickVersionName, type LayoutEntry, type SeedQuestion } from './seed'
+import { parseStoredVersionNames } from './version-names'
 
 export function outputRoot(): string {
   return path.resolve(process.env.TWISTER_OUTPUT_DIR ?? './output')
@@ -206,13 +207,16 @@ export async function createRun(params: {
         })),
     }))
 
+  const versionNames = parseStoredVersionNames(exam.versionNames)
+
   await prisma.studentExam.createMany({
     data: students.map((student) => {
+      // Seeded from the exam's chosen identity, never blindly from gtId.
+      const identity = identityValue(student, identityField)!
       const layout = buildLayout({
         instructorSeed: exam.instructorSeed,
         examId: exam.id,
-        // Seeded from the exam's chosen identity, never blindly from gtId.
-        gtId: identityValue(student, identityField)!,
+        gtId: identity,
         questions: seedQuestions,
       })
       return {
@@ -220,6 +224,14 @@ export async function createRun(params: {
         studentId: student.id,
         traceCode: layout.traceCode,
         layout: JSON.stringify(layout.entries),
+        // Fixed here with the layout, not at render time, so re-rendering a run
+        // reprints the same name even if the exam's list has changed since.
+        versionName: pickVersionName({
+          instructorSeed: exam.instructorSeed,
+          examId: exam.id,
+          gtId: identity,
+          names: versionNames,
+        }),
       }
     }),
   })
@@ -307,6 +319,7 @@ export async function executeRun(runId: string): Promise<void> {
           // Gradescope matches its roster on.
           gtId: identityValue(item.student, runIdentityField) ?? '',
           traceCode: item.traceCode,
+          versionName: item.versionName ?? undefined,
           instructionsHtml,
           katexHref: 'katex.min.css',
           questions: layout

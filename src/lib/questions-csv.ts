@@ -1,5 +1,6 @@
 import Papa from 'papaparse'
 import { MAX_CHOICES } from './seed'
+import { normalizeVersionNames } from './version-names'
 
 export interface ImportedChoice {
   textMarkdown: string
@@ -25,6 +26,13 @@ export interface ImportedQuestion {
 
 export interface QuestionCsvResult {
   questions: ImportedQuestion[]
+  /**
+   * Every name in the `version_name` column, top to bottom, normalized. Null when
+   * the file has no such column at all — which is not the same as an empty
+   * column: an older CSV without it must leave the exam's names alone, while a
+   * present-but-empty column deliberately clears them.
+   */
+  versionNames: string[] | null
   errors: string[]
   warnings: string[]
 }
@@ -32,7 +40,18 @@ export interface QuestionCsvResult {
 const CHOICE_COLUMNS = Array.from({ length: MAX_CHOICES }, (_, i) => `choice_${i + 1}`)
 
 export const SINGLE_QUESTION_HEADER = ['variation_label', 'prompt', ...CHOICE_COLUMNS, 'correct', 'pin_last']
-export const WHOLE_EXAM_HEADER = ['question_number', 'points', 'allow_multiple', ...SINGLE_QUESTION_HEADER]
+/**
+ * `version_name` is last so every earlier column keeps its position. It is
+ * unrelated to the question on its row: each cell holds one decorative version
+ * name for the whole exam, read top to bottom. A row carrying only a
+ * version_name (every question column blank) is allowed, for lists longer than
+ * the question rows.
+ */
+export const WHOLE_EXAM_HEADER = ['question_number', 'points', 'allow_multiple', ...SINGLE_QUESTION_HEADER, 'version_name']
+
+/** Every column that describes a question — blank across all of these marks a
+ * row that exists only to carry a version name. */
+const QUESTION_COLUMNS = WHOLE_EXAM_HEADER.filter((c) => c !== 'version_name')
 
 export const CSV_TEMPLATE = [
   SINGLE_QUESTION_HEADER.join(','),
@@ -87,6 +106,7 @@ export function parseQuestionCsv(
   if (missing.length) {
     return {
       questions: [],
+      versionNames: null,
       errors: [
         `CSV is missing required column(s): ${missing.join(', ')}. Expected header: ${(wholeExam ? WHOLE_EXAM_HEADER : SINGLE_QUESTION_HEADER).join(',')}`,
       ],
@@ -96,9 +116,15 @@ export function parseQuestionCsv(
 
   // Preserve first-seen order so questions land in the order the file lists them.
   const byQuestion = new Map<string, ImportedQuestion>()
+  const hasVersionColumn = fields.includes('version_name')
+  const rawVersionNames: string[] = []
 
   parsed.data.forEach((row, i) => {
     const line = i + 2
+    const versionName = (row['version_name'] ?? '').trim()
+    if (versionName) rawVersionNames.push(versionName)
+    if (versionName && QUESTION_COLUMNS.every((c) => !(row[c] ?? '').trim())) return
+
     const prompt = (row['prompt'] ?? '').trim()
     const groupKey = wholeExam ? (row['question_number'] ?? '').trim() : '1'
 
@@ -196,7 +222,16 @@ export function parseQuestionCsv(
     }
   }
 
-  return { questions: [...byQuestion.values()], errors, warnings }
+  let versionNames: string[] | null = null
+  if (hasVersionColumn) {
+    const normalized = normalizeVersionNames(rawVersionNames)
+    versionNames = normalized.names
+    for (const name of normalized.duplicates) {
+      warnings.push(`Version name "${name}" is listed more than once; it was kept once.`)
+    }
+  }
+
+  return { questions: [...byQuestion.values()], versionNames, errors, warnings }
 }
 
 interface ExportableQuestion {
@@ -210,8 +245,17 @@ interface ExportableQuestion {
   }[]
 }
 
-/** Round-trips back to the import format, so you can edit in a spreadsheet and re-upload. */
-export function toQuestionCsv(questions: ExportableQuestion[], includeQuestionNumber: boolean): string {
+/**
+ * Round-trips back to the import format, so you can edit in a spreadsheet and
+ * re-upload. The whole-exam format also carries the exam's version names, one
+ * per row down the `version_name` column, with name-only rows appended if there
+ * are more names than question rows.
+ */
+export function toQuestionCsv(
+  questions: ExportableQuestion[],
+  includeQuestionNumber: boolean,
+  versionNames: readonly string[] = [],
+): string {
   const header = includeQuestionNumber ? WHOLE_EXAM_HEADER : SINGLE_QUESTION_HEADER
   const rows = questions.flatMap((q) =>
     q.variations.map((v) => {
@@ -234,5 +278,15 @@ export function toQuestionCsv(questions: ExportableQuestion[], includeQuestionNu
       return cells
     }),
   )
+
+  if (includeQuestionNumber) {
+    versionNames.forEach((name, i) => {
+      if (i < rows.length) rows[i].push(name)
+      else rows.push([...QUESTION_COLUMNS.map(() => ''), name])
+    })
+    // Pad so every row has the full width; Papa would otherwise leave them ragged.
+    for (const row of rows) while (row.length < header.length) row.push('')
+  }
+
   return Papa.unparse({ fields: header, data: rows })
 }

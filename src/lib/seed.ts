@@ -79,6 +79,31 @@ export function traceCodeFor(root: Buffer): string {
   return root.toString('hex').slice(0, 6).toUpperCase()
 }
 
+/**
+ * Picks the decorative version name printed on a student's cover ("Version
+ * Monica"), or null when the exam defines none.
+ *
+ * Drawn from its own sub-stream off the same student root, so it is reproducible
+ * like everything else here — a reprinted paper gets the same name — while
+ * drawing nothing from the question or order streams: adding, editing, or
+ * removing version names never changes which paper anyone gets.
+ *
+ * It is deliberately unrelated to the layout. Names are reused across students,
+ * and two papers sharing a name share nothing else; it must never be read as a
+ * variant or answer-key label.
+ */
+export function pickVersionName(params: {
+  instructorSeed: string
+  examId: string
+  gtId: string
+  names: readonly string[]
+}): string | null {
+  if (params.names.length === 0) return null
+  const root = studentSeed(params.instructorSeed, params.examId, params.gtId)
+  const rng = sfc32(hmac(root.toString('hex'), 'version-name'))
+  return params.names[randomInt(rng, params.names.length)]
+}
+
 // --- layout construction -----------------------------------------------------
 
 export interface SeedChoice {

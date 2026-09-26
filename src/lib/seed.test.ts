@@ -3,6 +3,7 @@ import {
   buildLayout,
   distinctExamCount,
   formatBig,
+  pickVersionName,
   sfc32,
   shuffle,
   studentSeed,
@@ -284,5 +285,42 @@ describe('distinctExamCount', () => {
 
   it('is zero for an empty exam', () => {
     expect(distinctExamCount([])).toBe(0n)
+  })
+})
+
+describe('pickVersionName', () => {
+  const NAMES = ['Version Monica', 'Version Rachel', 'Version Ross', 'Version Chandler', 'Version Joey', 'Version Phoebe']
+  const pick = (gtId: string, names: readonly string[] = NAMES, examId = EXAM, instructorSeed = SEED) =>
+    pickVersionName({ instructorSeed, examId, gtId, names })
+
+  it('is null when the exam defines no names', () => {
+    expect(pick('903000101', [])).toBeNull()
+  })
+
+  it('gives a student the same name every time, so a reprint matches the original', () => {
+    expect(pick('903000101')).toBe(pick('903000101'))
+  })
+
+  it('always returns one of the names', () => {
+    for (let i = 0; i < 50; i++) expect(NAMES).toContain(pick(`9030${String(i).padStart(5, '0')}`))
+  })
+
+  it('spreads a real-sized roster across every name', () => {
+    const counts = new Map<string, number>()
+    for (let i = 0; i < 400; i++) {
+      const name = pick(`9030${String(i).padStart(5, '0')}`)!
+      counts.set(name, (counts.get(name) ?? 0) + 1)
+    }
+    expect(counts.size).toBe(NAMES.length)
+    // 400 draws over 6 names: expect ~67 each. A floor this loose only fails if
+    // the draw is badly skewed, not on ordinary variance.
+    for (const n of counts.values()) expect(n).toBeGreaterThan(35)
+  })
+
+  it('is seeded: a different instructor seed or exam reshuffles who gets which name', () => {
+    const ids = Array.from({ length: 60 }, (_, i) => `9030${String(i).padStart(5, '0')}`)
+    const base = ids.map((id) => pick(id))
+    expect(ids.map((id) => pick(id, NAMES, EXAM, 'another-seed'))).not.toEqual(base)
+    expect(ids.map((id) => pick(id, NAMES, 'exam-2'))).not.toEqual(base)
   })
 })

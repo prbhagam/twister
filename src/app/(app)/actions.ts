@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { parseIdentityField } from '@/lib/identity'
+import { versionNamesFromText } from '@/lib/version-names'
 import { audit } from '@/lib/audit'
 import { purgeArchivedCourse, restoreArchivedCourse } from '@/lib/course-admin'
 import { can, requireCoursePermission, requireExamPermission, requireRunPermission, requireUser } from '@/lib/authorization'
@@ -182,6 +183,11 @@ export async function updateExam(formData: FormData) {
       title: String(formData.get('title') ?? '').trim(),
       instructorSeed: String(formData.get('instructorSeed') ?? '').trim(),
       instructions: String(formData.get('instructions') ?? '').trim() || null,
+      // Only when the field was rendered: a form without it (a practice exam's)
+      // must not read as "clear every name".
+      ...(formData.has('versionNames')
+        ? { versionNames: JSON.stringify(versionNamesFromText(String(formData.get('versionNames') ?? ''))) }
+        : {}),
       ...(lockIdentity ? {} : { identityField }),
       ...(lockPracticeExam ? {} : { isPracticeExam: formData.get('isPracticeExam') === 'on' }),
     },

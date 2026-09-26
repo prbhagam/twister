@@ -93,3 +93,81 @@ describe('toQuestionCsv round-trip', () => {
     expect(reparsed.questions[0].variations[0].choices.map((c) => c.isCorrect)).toEqual([true, false, true])
   })
 })
+
+describe('version_name column', () => {
+  // question_number,…,pin_last,version_name
+  const Q1 = '1,1,,A,Pick one,x,y,,,,1,'
+  const Q2 = '2,1,,A,Pick another,x,y,,,,2,'
+
+  it('is null when the file has no such column, so an older CSV leaves the exam’s names alone', () => {
+    const header = WHOLE_EXAM_HEADER.filter((c) => c !== 'version_name').join(',')
+    const result = parseQuestionCsv([header, Q1].join('\n'))
+    expect(result.errors).toEqual([])
+    expect(result.versionNames).toBeNull()
+  })
+
+  it('is empty — not null — when the column is present but blank, which clears the names', () => {
+    const result = parseQuestionCsv(csv([`${Q1},`, `${Q2},`]))
+    expect(result.versionNames).toEqual([])
+  })
+
+  it('reads one name per cell, top to bottom, whatever question the row belongs to', () => {
+    const result = parseQuestionCsv(csv([`${Q1},Version Monica`, `${Q2},Version We Were on a Break`]))
+    expect(result.errors).toEqual([])
+    expect(result.versionNames).toEqual(['Version Monica', 'Version We Were on a Break'])
+    expect(result.questions).toHaveLength(2)
+  })
+
+  it('accepts rows that carry only a name, without inventing a question from them', () => {
+    const nameOnly = `${',,,,,,,,,,,'},Version Joey`
+    const result = parseQuestionCsv(csv([`${Q1},Version Monica`, nameOnly]))
+    expect(result.errors).toEqual([])
+    expect(result.questions).toHaveLength(1)
+    expect(result.versionNames).toEqual(['Version Monica', 'Version Joey'])
+  })
+
+  it('keeps a repeated name once, and says so', () => {
+    const result = parseQuestionCsv(csv([`${Q1},Version Ross`, `${Q2},version  ross`]))
+    expect(result.versionNames).toEqual(['Version Ross'])
+    expect(result.warnings.some((w) => w.includes('more than once'))).toBe(true)
+  })
+
+  it('round-trips through export, including more names than there are question rows', () => {
+    const names = ['Version Monica', 'Version Rachel', 'Version Ross', 'The One Where Ross Got High']
+    const out = toQuestionCsv(
+      [
+        {
+          order: 1,
+          points: 1,
+          allowMultipleCorrect: false,
+          variations: [
+            {
+              label: 'A',
+              promptMarkdown: 'Pick one',
+              choices: [
+                { textMarkdown: 'x', isCorrect: true, pinToLast: false },
+                { textMarkdown: 'y', isCorrect: false, pinToLast: false },
+              ],
+            },
+          ],
+        },
+      ],
+      true,
+      names,
+    )
+    const reparsed = parseQuestionCsv(out)
+    expect(reparsed.errors).toEqual([])
+    expect(reparsed.questions).toHaveLength(1)
+    expect(reparsed.versionNames).toEqual(names)
+  })
+
+  it('is left out of the per-question export, which never touches exam-level names', () => {
+    const out = toQuestionCsv(
+      [{ order: 1, points: 1, allowMultipleCorrect: false, variations: [{ label: 'A', promptMarkdown: 'p', choices: [{ textMarkdown: 'x', isCorrect: true, pinToLast: false }, { textMarkdown: 'y', isCorrect: false, pinToLast: false }] }] }],
+      false,
+      ['Version Monica'],
+    )
+    expect(out.split('\n')[0]).not.toContain('version_name')
+    expect(out).not.toContain('Version Monica')
+  })
+})

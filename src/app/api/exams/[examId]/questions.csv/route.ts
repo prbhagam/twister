@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db'
 import { toQuestionCsv } from '@/lib/questions-csv'
+import { parseStoredVersionNames } from '@/lib/version-names'
 
 /** Round-trips the live question bank so it can be edited in a spreadsheet. */
 export async function GET(_request: Request, { params }: { params: Promise<{ examId: string }> }) {
@@ -22,7 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ exa
   })
   if (!exam) return new Response('Not found', { status: 404 })
 
-  const csv = toQuestionCsv(exam.questions, true)
+  const csv = toQuestionCsv(exam.questions, true, parseStoredVersionNames(exam.versionNames))
   const slug = exam.title.replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '') || 'exam'
 
   return new Response(csv, {
