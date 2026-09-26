@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { createRun, executeRun } from '@/lib/generation'
 import { parseQuestionCsv } from '@/lib/questions-csv'
+import { replaceExamQuestions, writeVariations } from '@/lib/question-import'
 import { MAX_CHOICES } from '@/lib/seed'
 import { audit } from '@/lib/audit'
 import { requireExamPermission } from '@/lib/authorization'
@@ -195,26 +196,6 @@ export async function importQuestionCsv(
   if (result.errors.length) return { errors: result.errors, warnings: result.warnings }
   if (result.questions.length === 0) return { errors: ['No question rows found in that CSV.'] }
 
-  const writeVariations = (targetId: string, question: (typeof result.questions)[number]) =>
-    question.variations.map((variation, v) =>
-      prisma.variation.create({
-        data: {
-          questionId: targetId,
-          order: v,
-          label: variation.label,
-          promptMarkdown: variation.promptMarkdown,
-          choices: {
-            create: variation.choices.map((choice, c) => ({
-              order: c,
-              textMarkdown: choice.textMarkdown,
-              isCorrect: choice.isCorrect,
-              pinToLast: choice.pinToLast,
-            })),
-          },
-        },
-      }),
-    )
-
   if (questionId) {
     if (result.questions.length > 1) {
       return {
@@ -226,7 +207,14 @@ export async function importQuestionCsv(
     // Replacing rather than appending: re-uploading a corrected file should not
     // leave the old variations behind.
     await prisma.variation.deleteMany({ where: { questionId } })
-    await Promise.all(writeVariations(questionId, result.questions[0]))
+    await writeVariations(questionId, result.questions[0])
+    // Version names belong to the whole exam; a single question's upload never
+    // touches them, so say so rather than dropping them silently.
+    if (result.versionNames?.length) {
+      result.warnings.push(
+        'Version names are only read from a whole-exam CSV uploaded on the exam page; the version_name column here was ignored.',
+      )
+    }
     const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
     await audit({ actorUserId: user.id, action: 'question.edited', entityType: 'question', entityId: questionId, courseId: exam.courseId })
 
@@ -238,25 +226,28 @@ export async function importQuestionCsv(
     }
   }
 
-  await prisma.question.updateMany({ where: { examId, archivedAt: null }, data: { archivedAt: new Date(), workflowStatus: 'RETIRED' } })
-  for (const [index, question] of result.questions.entries()) {
-    const created = await prisma.question.create({
-      data: {
-        examId,
-        order: question.questionNumber ?? index + 1,
-        points: question.points ?? 1,
-        allowMultipleCorrect: question.allowMultipleCorrect ?? false,
-      },
-    })
-    await Promise.all(writeVariations(created.id, question))
-  }
+  await replaceExamQuestions(examId, result.questions, result.versionNames)
   const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
-  await audit({ actorUserId: user.id, action: 'questions.imported', entityType: 'exam', entityId: examId, courseId: exam.courseId, metadata: { questions: result.questions.length } })
+  await audit({
+    actorUserId: user.id,
+    action: 'questions.imported',
+    entityType: 'exam',
+    entityId: examId,
+    courseId: exam.courseId,
+    metadata: { questions: result.questions.length, versionNames: result.versionNames?.length ?? null },
+  })
 
   revalidatePath(`/exams/${examId}`)
+  const variations = result.questions.reduce((n, q) => n + q.variations.length, 0)
+  const names =
+    result.versionNames === null
+      ? ''
+      : result.versionNames.length === 0
+        ? ' Version names cleared.'
+        : ` Set ${result.versionNames.length} version name${result.versionNames.length === 1 ? '' : 's'}.`
   return {
     ok: true,
-    message: `Imported ${result.questions.length} questions with ${result.questions.reduce((n, q) => n + q.variations.length, 0)} variations.`,
+    message: `Imported ${result.questions.length} questions with ${variations} variations.${names}`,
     warnings: result.warnings,
   }
 }

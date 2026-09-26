@@ -15,6 +15,9 @@ export interface RenderExam {
   studentName: string
   gtId: string
   traceCode: string
+  /** Decorative cover line such as "Version Monica". Printed verbatim; omitted
+   * when the exam defines no version names. Unrelated to the paper's layout. */
+  versionName?: string
   instructionsHtml?: string
   questions: RenderQuestion[]
   /** Relative href to katex.min.css, or null when the exam uses no math. */
@@ -62,6 +65,12 @@ const STYLES = String.raw`
     letter-spacing: -0.02em;
     line-height: 1.1;
     margin: 0 0 0.08in;
+  }
+  .cover .version {
+    font-size: 15pt;
+    font-weight: 600;
+    font-style: italic;
+    margin: 0 0 0.1in;
   }
   .cover .course {
     font-size: 12.5pt;
@@ -262,6 +271,7 @@ export function buildExamBody(exam: RenderExam): string {
   <section class="cover">
     <div class="rule"></div>
     <h1>${escapeHtml(exam.examTitle)}</h1>
+    ${exam.versionName ? `<p class="version">${escapeHtml(exam.versionName)}</p>` : ''}
     <p class="course">${escapeHtml(exam.courseName)}</p>
     <div class="who">
       <dl>

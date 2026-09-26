@@ -111,6 +111,11 @@ model Exam {
   // Saved as soon as it is pasted, even if the first sync then fails, so a
   // transient fetch error never erases what was entered. See the signup side below.
   signupSheetUrl     String?
+  // Decorative names printed on each student's cover ("Version Monica"), as a
+  // JSON array of strings. One is picked per student at generation time; they
+  // are reused freely and mean nothing to grading. Set from the settings form or
+  // a whole-exam questions CSV's version_name column.
+  versionNames       String    @default("[]")
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   lifecycle          String    @default("DRAFT") // DRAFT | READY_FOR_REVIEW | APPROVED | GENERATED | LOCKED | GRADED | ARCHIVED
@@ -407,17 +412,20 @@ model RunChoice {
 }
 
 model StudentExam {
-  id        String   @id @default(cuid())
-  runId     String
-  studentId String
-  traceCode String
+  id          String   @id @default(cuid())
+  runId       String
+  studentId   String
+  traceCode   String
   // JSON ExamLayout: ordered [{ position, runQuestionId, runVariationId,
   // choiceOrder: [runChoiceId...], correctLetter, choiceCount, points }].
   // This is the authoritative answer key — grading is a pure lookup against it.
-  layout    String
-  pdfPath   String?
-  pageCount Int?
-  createdAt DateTime @default(now())
+  layout      String
+  pdfPath     String?
+  pageCount   Int?
+  // The decorative version name printed on this student's cover, if the exam
+  // had any when the run was created. Recorded because it is on the paper.
+  versionName String?
+  createdAt   DateTime @default(now())
 
   run       GenerationRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
   student   Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
