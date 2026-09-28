@@ -18,6 +18,9 @@ export const BUBBLE_SHEET_PATH = path.join(process.cwd(), 'assets', 'Gradescope 
  */
 const FIELD = {
   x: 115,
+  // The "Other" label spans (315, 99)-(344, 113), on the ID line; stamped the
+  // same distance past its label as the name and ID are past theirs.
+  otherX: 358,
   maxWidth: 185,
   nameBaseline: 792 - 77.6,
   idBaseline: 792 - 112.6,
@@ -57,16 +60,20 @@ export function toWinAnsi(text: string): string {
     .trim()
 }
 
+/** What is stamped into a bubble sheet's header. `other` goes in the "Other"
+ * field: a blank exam's label, so the scan itself says which blank it was. */
+export interface SheetFields {
+  name: string
+  gtId: string
+  other?: string
+}
+
 /**
  * Draws the student's name and GT ID into the header fields of an already-placed
  * bubble sheet page. Shared by the per-student PDFs and the merged print file so
  * the two can never drift apart.
  */
-export function drawStudentFields(
-  page: PDFPage,
-  font: PDFFont,
-  student: { name: string; gtId: string },
-): void {
+export function drawStudentFields(page: PDFPage, font: PDFFont, student: SheetFields): void {
   const ink = rgb(0, 0, 0)
 
   const name = fitText(toWinAnsi(student.name), font, FIELD.maxWidth, FIELD.size, FIELD.minSize)
@@ -74,6 +81,11 @@ export function drawStudentFields(
 
   const id = fitText(toWinAnsi(student.gtId), font, FIELD.maxWidth, FIELD.size, FIELD.minSize)
   page.drawText(id.text, { x: FIELD.x, y: FIELD.idBaseline, size: id.size, font, color: ink })
+
+  if (student.other) {
+    const other = fitText(toWinAnsi(student.other), font, FIELD.maxWidth, FIELD.size, FIELD.minSize)
+    page.drawText(other.text, { x: FIELD.otherX, y: FIELD.idBaseline, size: other.size, font, color: ink })
+  }
 }
 
 export const SHEET_SIZE: [number, number] = [612, 792]
@@ -98,7 +110,7 @@ export class BubbleSheetStamper {
    * Copies the template page into `target` as its first page, with the student's
    * name and GT ID stamped into the header fields.
    */
-  async prependTo(target: PDFDocument, student: { name: string; gtId: string }): Promise<void> {
+  async prependTo(target: PDFDocument, student: SheetFields): Promise<void> {
     const [page] = await target.copyPages(this.template, [0])
     const font = await target.embedFont(StandardFonts.Helvetica)
     drawStudentFields(page, font, student)
@@ -106,7 +118,7 @@ export class BubbleSheetStamper {
   }
 
   /** Standalone stamped sheet — used by the coordinate-verification test. */
-  async renderSingle(student: { name: string; gtId: string }): Promise<Uint8Array> {
+  async renderSingle(student: SheetFields): Promise<Uint8Array> {
     const doc = await PDFDocument.create()
     await this.prependTo(doc, student)
     return doc.save()

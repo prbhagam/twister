@@ -11,7 +11,7 @@ import {
   drawStudentFields,
   toWinAnsi,
 } from './bubble-sheet'
-import { buildExamBody, buildShellHtml, footerTemplate, headerTemplate, type RenderExam } from './exam-html'
+import { buildExamBody, buildShellHtml, footerTemplate, headerTemplate, paperOwnerLine, type RenderExam } from './exam-html'
 
 const KATEX_DIST = path.join(process.cwd(), 'node_modules', 'katex', 'dist')
 
@@ -127,7 +127,7 @@ export async function padBooklet(doc: PDFDocument, exam: RenderExam): Promise<vo
   const footerSize = 7.5
   const footer = rgb(0.37, 0.37, 0.37)
   const margin = 54
-  page.drawText(`${toWinAnsi(exam.studentName)} · ${toWinAnsi(exam.gtId)}`, {
+  page.drawText(toWinAnsi(paperOwnerLine(exam)), {
     x: margin,
     y: 40,
     size: footerSize,
@@ -209,7 +209,7 @@ export class ExamRenderer {
     }
 
     const doc = await PDFDocument.load(bodyPdf)
-    await this.stamper.prependTo(doc, { name: exam.studentName, gtId: exam.gtId })
+    await this.stamper.prependTo(doc, { name: exam.studentName, gtId: exam.gtId, other: exam.blankLabel })
     await addScantronBackPage(doc)
     await padBooklet(doc, exam)
 

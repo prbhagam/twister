@@ -232,6 +232,9 @@ students who never signed up:
 ```
 10-27-2026 1-35 PM (Scheller 101)/00-COVER-SHEET.pdf
 10-27-2026 1-35 PM (Scheller 101)/01-INSTRUCTIONS.pdf
+10-27-2026 1-35 PM (Scheller 101)/02-BLANK-01.pdf
+10-27-2026 1-35 PM (Scheller 101)/02-BLANK-02.pdf
+10-27-2026 1-35 PM (Scheller 101)/02-BLANK-03.pdf
 10-27-2026 1-35 PM (Scheller 101)/Afeworki-Lulya-903977463.pdf
 OMSCS Seminar/00-COVER-SHEET.pdf
 OMSCS Seminar/01-INSTRUCTIONS.pdf
@@ -265,7 +268,7 @@ pages rather than a truncated list.
 Neither sheet carries run identifiers or a generation timestamp; they describe the
 session, not the print job. Each student's own paper already carries its trace code.
 
-The script itself is `TA_INSTRUCTIONS` in `src/lib/pdf/session-packet.ts` — a plain
+The script itself is `proctorInstructions` in `src/lib/pdf/session-packet.ts` — a plain
 list of headings and numbered items, meant to be edited directly as a course's own
 rules settle. Tests keep it to one side of one sheet, check it still points a TA at
 the write-in block that actually exists, and reject any character that would not
@@ -274,6 +277,30 @@ survive to paper.
 The not-signed-up folder gets neither sheet: nobody is proctoring that pile, and a
 signed custody sheet describing a session that is not happening would say something
 untrue.
+
+### Blank exams for students at the wrong session
+
+Every session folder (not exception groups) also carries three **blank exams**,
+`02-BLANK-NN.pdf`, for students who turn up at a session they did not sign up for.
+A blank is a full paper with its own shuffled layout and answer key, but no student
+on it: the cover and the bubble sheet leave Name and ID for the student to write in,
+and the blank's label (`BLANK-07`) is printed on the cover, in the page footer, and in
+the bubble sheet's **Other** box so it shows on the scan.
+
+Blanks are created the first time a session is exported and reused on every export
+after, so a reprinted blank always carries the same key. Numbers are unique across
+every run of the exam. When a folder has blanks, the roster's write-in block becomes
+one row per blank number, and the proctor script tells the TA to hand an unexpected
+student a blank and write their name and GT ID next to its number.
+
+To grade one, open the run page's **Abnormal attendance** card, pick the student,
+and enter the blank's ID from the roster. Gradescope still matches the scan to the
+student by the GT ID they wrote in; TWISTER then grades that student against the
+blank's key instead of their own paper. Marking a student (or removing the mark)
+regrades them immediately from the responses already imported, and clears any
+manual overrides they had, since those were entered against the other paper's
+question order. The answer key CSV, the review page, and the graded-report export
+all follow the blank for that student.
 
 ## Deleting things
 

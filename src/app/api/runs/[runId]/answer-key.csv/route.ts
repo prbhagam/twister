@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db'
 import { answerKeyCsv } from '@/lib/export'
 import { loadLabelMaps } from '@/lib/run-data'
-import type { LayoutEntry } from '@/lib/seed'
+import { answeredLayout, answeredTraceCode } from '@/lib/blank-exams'
 import { authorizeRunApi } from '@/lib/authorization'
 
 /**
@@ -14,7 +14,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ run
 
   const studentExams = await prisma.studentExam.findMany({
     where: { runId },
-    include: { student: true },
+    include: { student: true, blankExam: true },
   })
   if (studentExams.length === 0) return new Response('Not found', { status: 404 })
 
@@ -29,9 +29,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ run
         username: se.student.username,
         email: se.student.email,
         sections: JSON.parse(se.student.sections) as string[],
-        traceCode: se.traceCode,
+        // A student who sat a blank exam is keyed against the paper they
+        // actually held, which is what a disputed score is checked against.
+        traceCode: answeredTraceCode(se),
       },
-      layout: JSON.parse(se.layout) as LayoutEntry[],
+      layout: answeredLayout(se),
     })),
     questionLabels,
     variationLabels,

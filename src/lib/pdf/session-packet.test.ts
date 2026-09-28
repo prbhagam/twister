@@ -5,6 +5,7 @@ import {
   INSTRUCTIONS_FILE,
   TA_INSTRUCTIONS,
   buildCoverSheetPdf,
+  proctorInstructions,
   buildInstructionsPdf,
   fitOneLine,
   formatSessionDate,
@@ -32,6 +33,7 @@ function packet(overrides: Partial<SessionPacket> = {}): SessionPacket {
     sessionAt: new Date(2026, 9, 27, 13, 35),
     location: 'Scheller 101',
     students: students(40),
+    blanks: [],
     ...overrides,
   }
 }
@@ -92,10 +94,17 @@ describe('TA_INSTRUCTIONS', () => {
   const REACHES_PAPER = /^[\x20-\x7E–—‘’“”…]*$/
 
   it('uses only characters that survive to the printed page', () => {
-    for (const section of TA_INSTRUCTIONS) {
+    for (const section of [...TA_INSTRUCTIONS, ...proctorInstructions(true)]) {
       expect(section.heading, section.heading).toMatch(REACHES_PAPER)
       for (const item of section.items) expect(item, item).toMatch(REACHES_PAPER)
     }
+  })
+
+  it('hands an unexpected arrival a blank exam only when the packet has one', () => {
+    const withBlanks = proctorInstructions(true).flatMap((s) => s.items).join(' ')
+    expect(withBlanks).toMatch(/give them a blank exam/i)
+    expect(withBlanks).toMatch(/end of the roster/i)
+    expect(TA_INSTRUCTIONS.flatMap((s) => s.items).join(' ')).not.toMatch(/blank exam/i)
   })
 
   it('points an unexpected arrival at the write-in block that actually exists', () => {
@@ -196,6 +205,48 @@ describe('rosterSlots', () => {
       'write-in',
       'write-in',
     ])
+  })
+})
+
+describe('rosterSlots with blank exams', () => {
+  it('gives each blank its own labelled write-in row, in place of the anonymous ones', () => {
+    const slots = rosterSlots(students(2), ['BLANK-01', 'BLANK-02', 'BLANK-03'])
+    expect(slots.map((s) => s.kind)).toEqual([
+      'student',
+      'student',
+      'gap',
+      'write-in-heading',
+      'write-in',
+      'write-in',
+      'write-in',
+    ])
+    expect(slots.flatMap((s) => (s.kind === 'write-in' && s.blank ? [s.blank] : []))).toEqual([
+      'BLANK-01',
+      'BLANK-02',
+      'BLANK-03',
+    ])
+  })
+})
+
+describe('a session packet carrying blank exams', () => {
+  const blanks = ['BLANK-04', 'BLANK-05', 'BLANK-06']
+
+  it('counts the blanks among the papers the TA signs for', async () => {
+    const text = await pageText(await buildCoverSheetPdf(packet({ students: students(37), blanks })), 0)
+    expect(text).toContain('40')
+    expect(text).toContain('Includes 3 blank exams.')
+  })
+
+  it('prints each blank number on the roster for the TA to write a name against', async () => {
+    const text = await pageText(await buildInstructionsPdf(packet({ students: students(12), blanks })), 0)
+    for (const blank of blanks) expect(text).toContain(blank)
+  })
+
+  it('still fits roster and script on one sheet for a normal session', async () => {
+    for (const count of [1, 40, 69]) {
+      const pages = await pageCount(await buildInstructionsPdf(packet({ students: students(count), blanks })))
+      expect(pages, `${count} students`).toBe(2)
+    }
   })
 })
 

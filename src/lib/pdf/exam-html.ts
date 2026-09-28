@@ -18,6 +18,10 @@ export interface RenderExam {
   /** Decorative cover line such as "Version Monica". Printed verbatim; omitted
    * when the exam defines no version names. Unrelated to the paper's layout. */
   versionName?: string
+  /** Set on a blank exam ("BLANK-07"): a spare paper with no student on it.
+   * `studentName` and `gtId` are then empty, and the cover leaves lines for the
+   * student to write their own in. */
+  blankLabel?: string
   instructionsHtml?: string
   questions: RenderQuestion[]
   /** Relative href to katex.min.css, or null when the exam uses no math. */
@@ -106,6 +110,8 @@ const STYLES = String.raw`
     font-weight: 600;
   }
   .cover .who dd.code { font-family: var(--mono); font-size: 10.5pt; letter-spacing: 0.06em; }
+  .cover .who dd.write-in { border-bottom: 0.75pt solid var(--rule-strong); min-height: 0.3in; }
+  .cover .blank-note { font-size: 10pt; color: var(--muted); margin: 0.12in 0 0; }
 
   .cover .instructions { font-size: 10.5pt; line-height: 1.6; }
   .cover .instructions > :first-child { margin-top: 0; }
@@ -203,6 +209,15 @@ const STYLES = String.raw`
 `
 
 /**
+ * Who a paper belongs to, as the footer prints it: the student's name and ID,
+ * or on a blank, its label — the only thing that ties a loose blank page back
+ * to the paper it came from.
+ */
+export function paperOwnerLine(exam: Pick<RenderExam, 'studentName' | 'gtId' | 'blankLabel'>): string {
+  return exam.blankLabel ?? `${exam.studentName} · ${exam.gtId}`
+}
+
+/**
  * The footer identifies the paper on every sheet. If a packet is dropped and the
  * pages are reshuffled, the name, GT ID, and trace code on each page are enough to
  * reassemble it — and the trace code alone recovers the exact layout from the run.
@@ -212,7 +227,7 @@ export function footerTemplate(exam: RenderExam): string {
   // none of the page CSS, so the palette's grey is inlined here by hand. At 7.5pt
   // the old blue-grey was the first thing to break up on a photocopy.
   return `<div style="width:100%;font:7.5pt 'Helvetica Neue',Helvetica,Arial,sans-serif;color:#5f5f5f;letter-spacing:0.02em;padding:0 0.75in;display:flex;justify-content:space-between;">
-    <span>${escapeHtml(exam.studentName)} &middot; ${escapeHtml(exam.gtId)}</span>
+    <span>${escapeHtml(paperOwnerLine(exam))}</span>
     <span>${escapeHtml(exam.examTitle)}</span>
     <span>${escapeHtml(exam.traceCode)} &middot; <span class="pageNumber"></span>/<span class="totalPages"></span></span>
   </div>`
@@ -238,6 +253,26 @@ export function buildShellHtml(katexHref: string | null): string {
 <head><meta charset="utf-8"><title>TWISTER</title>${katexLink}<style>${STYLES}</style></head>
 <body></body>
 </html>`
+}
+
+function studentWho(exam: RenderExam): string {
+  return `<dl>
+        <dt>Name</dt><dd>${escapeHtml(exam.studentName)}</dd>
+        <dt>ID</dt><dd>${escapeHtml(exam.gtId)}</dd>
+        <dt>Exam code</dt><dd class="code">${escapeHtml(exam.traceCode)}</dd>
+      </dl>`
+}
+
+/** A blank paper's cover: lines for the student's own name and ID, and the
+ * blank's label, which the instructor needs to grade it against the right key. */
+function blankWho(exam: RenderExam, label: string): string {
+  return `<dl>
+        <dt>Name</dt><dd class="write-in"></dd>
+        <dt>ID</dt><dd class="write-in"></dd>
+        <dt>Blank exam</dt><dd class="code">${escapeHtml(label)}</dd>
+        <dt>Exam code</dt><dd class="code">${escapeHtml(exam.traceCode)}</dd>
+      </dl>
+      <p class="blank-note">Write your name and GT ID above, and again in the Name and ID boxes on the bubble sheet.</p>`
 }
 
 export function buildExamBody(exam: RenderExam): string {
@@ -274,11 +309,7 @@ export function buildExamBody(exam: RenderExam): string {
     ${exam.versionName ? `<p class="version">${escapeHtml(exam.versionName)}</p>` : ''}
     <p class="course">${escapeHtml(exam.courseName)}</p>
     <div class="who">
-      <dl>
-        <dt>Name</dt><dd>${escapeHtml(exam.studentName)}</dd>
-        <dt>ID</dt><dd>${escapeHtml(exam.gtId)}</dd>
-        <dt>Exam code</dt><dd class="code">${escapeHtml(exam.traceCode)}</dd>
-      </dl>
+      ${exam.blankLabel ? blankWho(exam, exam.blankLabel) : studentWho(exam)}
     </div>
     ${exam.instructionsHtml ? `<div class="instructions">${exam.instructionsHtml}</div>` : ''}
   </section>

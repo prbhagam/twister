@@ -1,8 +1,9 @@
 import { createReadStream } from 'node:fs'
 import path from 'node:path'
 import { ZipArchive, type Archiver } from 'archiver'
+import { blankZipEntryName, formatBlankLabel } from './blank-exams'
 import { prisma } from './db'
-import { runDir } from './generation'
+import { ensureSessionBlanks, renderPendingBlanks, runDir } from './generation'
 import {
   COVER_SHEET_FILE,
   INSTRUCTIONS_FILE,
@@ -56,11 +57,21 @@ export function wantsPacketSheets(kind: string): boolean {
 }
 
 /**
+ * Whether a folder gets blank exams for students who turn up at a session they
+ * did not sign up for. Real sessions only: an exception group is an arrangement
+ * made with specific students, so nobody walks into it by mistake.
+ */
+export function wantsBlankExams(kind: string): boolean {
+  return kind === 'session'
+}
+
+/**
  * Streams a ZIP of one run's already-rendered student PDFs, grouped into
  * folders by that student's current signup bucket for the run's exam. Student
  * PDFs are read off disk only — no rendering, unlike graded-export.ts's
- * course-wide export — because generation already produced every one of them;
- * the two packet sheets per session folder are the only thing built here.
+ * course-wide export — because generation already produced every one of them.
+ * Built here: the two packet sheets per session folder, and, the first time a
+ * session is exported, that session's blank exams (reused on every export after).
  */
 export async function streamRunBySessionZip(runId: string): Promise<{ archive: Archiver; entryCount: number }> {
   const run = await prisma.generationRun.findUniqueOrThrow({
@@ -106,12 +117,41 @@ export async function streamRunBySessionZip(runId: string): Promise<{ archive: A
     folder.files.push({ pdfPath: se.pdfPath, student: se.student })
   }
 
+  // Sessions in date order, so blank numbers climb through the exam's
+  // timetable instead of following whichever student happened to come first.
+  const sessionBuckets = [...folders.values()]
+    .flatMap((folder) => (folder.bucket && wantsBlankExams(folder.bucket.kind) ? [folder.bucket] : []))
+    .sort((a, b) => (a.sessionAt?.getTime() ?? 0) - (b.sessionAt?.getTime() ?? 0))
+  const sessions = sessionBuckets.map((bucket) => ({ key: bucket.naturalKey, name: bucket.rawLabel }))
+  await ensureSessionBlanks(runId, sessions)
+  await renderPendingBlanks(runId)
+  // Read after rendering, so each blank carries the pdfPath it was just given.
+  const blanks = await prisma.blankExam.findMany({
+    where: { runId, sessionKey: { in: sessions.map((s) => s.key) } },
+    orderBy: { number: 'asc' },
+  })
+  const blanksBySession = new Map<string, typeof blanks>()
+  for (const blank of blanks) blanksBySession.set(blank.sessionKey, [...(blanksBySession.get(blank.sessionKey) ?? []), blank])
+
   let entryCount = 0
   for (const [name, folder] of folders) {
+    const folderBlanks = folder.bucket ? (blanksBySession.get(folder.bucket.naturalKey) ?? []) : []
+
     if (folder.bucket && wantsPacketSheets(folder.bucket.kind)) {
-      const packet = buildPacket(run, folder.bucket, folder.files.map((f) => f.student))
+      const packet = buildPacket(
+        run,
+        folder.bucket,
+        folder.files.map((f) => f.student),
+        folderBlanks.map((b) => formatBlankLabel(b.number)),
+      )
       archive.append(Buffer.from(await buildCoverSheetPdf(packet)), { name: `${name}/${COVER_SHEET_FILE}` })
       archive.append(Buffer.from(await buildInstructionsPdf(packet)), { name: `${name}/${INSTRUCTIONS_FILE}` })
+    }
+
+    for (const blank of folderBlanks) {
+      // Every blank was rendered just above; a render failure has already thrown.
+      if (!blank.pdfPath) throw new Error(`${formatBlankLabel(blank.number)} has no PDF.`)
+      archive.append(createReadStream(path.join(dir, blank.pdfPath)), { name: `${name}/${blankZipEntryName(blank.number)}` })
     }
 
     for (const file of folder.files) {
@@ -148,6 +188,7 @@ export function buildPacket(
   run: PacketRun,
   bucket: PacketBucket,
   students: { firstName: string; lastName: string; gtId: string | null; username: string | null }[],
+  blanks: string[] = [],
 ): SessionPacket {
   const roster: PacketStudent[] = students
     .map((s) => ({ firstName: s.firstName, lastName: s.lastName, identity: s.gtId ?? s.username ?? null }))
@@ -160,5 +201,6 @@ export function buildPacket(
     sessionAt: bucket.sessionAt,
     location: bucket.location,
     students: roster,
+    blanks,
   }
 }

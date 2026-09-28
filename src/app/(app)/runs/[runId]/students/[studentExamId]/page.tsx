@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/db'
+import { answeredLayout, answeredTraceCode, formatBlankLabel } from '@/lib/blank-exams'
 import { FLAGGED, VERDICT_LABEL, type Verdict } from '@/lib/grading'
 import { byLastName } from '@/lib/roster'
-import { LETTERS, type LayoutEntry } from '@/lib/seed'
+import { LETTERS } from '@/lib/seed'
 import { Badge, Card, CardHeader, Markdown, Notice } from '@/components/ui'
 import { OverrideControl } from './OverrideControl'
 
@@ -29,6 +30,7 @@ export default async function StudentReviewPage({
     include: {
       student: true,
       overrides: true,
+      blankExam: true,
       run: {
         include: {
           questions: { include: { variations: { include: { choices: true } } } },
@@ -63,9 +65,9 @@ export default async function StudentReviewPage({
     }
   }
 
-  const layout = (JSON.parse(studentExam.layout) as LayoutEntry[]).sort(
-    (a, b) => a.position - b.position,
-  )
+  const layout = answeredLayout(studentExam).sort((a, b) => a.position - b.position)
+  const blank = studentExam.blankExam
+  const hasPdf = blank ? Boolean(blank.pdfPath) : Boolean(studentExam.pdfPath)
   const resultByPosition = new Map((result?.questions ?? []).map((q) => [q.position, q]))
   const overrideByPosition = new Map(studentExam.overrides.map((o) => [o.position, o]))
 
@@ -91,7 +93,7 @@ export default async function StudentReviewPage({
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
             GT ID {studentExam.student.gtId} · exam code{' '}
-            <code className="font-mono">{studentExam.traceCode}</code>
+            <code className="font-mono">{answeredTraceCode(studentExam)}</code>
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -113,6 +115,13 @@ export default async function StudentReviewPage({
           ) : null}
         </div>
       </div>
+
+      {blank ? (
+        <Notice tone="amber" title="Sat a different session">
+          Wrote on blank exam <code className="font-mono">{formatBlankLabel(blank.number)}</code>, issued to{' '}
+          {blank.sessionName}. Graded against that paper, not the one generated for this student.
+        </Notice>
+      ) : null}
 
       {result ? (
         <Notice tone={result.status === 'not_taken' ? 'amber' : 'blue'}>
@@ -139,7 +148,7 @@ export default async function StudentReviewPage({
               </a>
             }
           />
-          {studentExam.pdfPath ? (
+          {hasPdf ? (
             <iframe
               src={`/api/runs/${runId}/pdf/${studentExamId}`}
               title="Student exam PDF"
