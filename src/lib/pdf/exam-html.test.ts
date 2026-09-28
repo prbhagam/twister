@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildExamBody, type RenderExam } from './exam-html'
+import { buildExamBody, footerTemplate, paperOwnerLine, type RenderExam } from './exam-html'
 
 const exam: RenderExam = {
   examTitle: 'In-Person Exam 1',
@@ -32,5 +32,26 @@ describe('the cover’s version name', () => {
 
   it('leaves no trace when the exam has no version names', () => {
     expect(cover(buildExamBody(exam))).not.toContain('class="version"')
+  })
+})
+
+describe('a blank exam’s cover', () => {
+  const blank: RenderExam = { ...exam, studentName: '', gtId: '', blankLabel: 'BLANK-07' }
+
+  it('prints the blank’s number and leaves name and ID to be written in', () => {
+    const html = cover(buildExamBody(blank))
+    expect(html).toContain('BLANK-07')
+    expect(html.match(/class="write-in"/g)).toHaveLength(2)
+    expect(html).toContain('Name and ID boxes on the bubble sheet')
+  })
+
+  it('carries no write-in lines on a student’s own paper', () => {
+    expect(cover(buildExamBody(exam))).not.toContain('write-in')
+  })
+
+  it('identifies a loose page by the blank’s number, not an empty name', () => {
+    expect(paperOwnerLine(blank)).toBe('BLANK-07')
+    expect(footerTemplate(blank)).toContain('BLANK-07')
+    expect(paperOwnerLine(exam)).toBe('Nadia Abbott · 903000101')
   })
 })

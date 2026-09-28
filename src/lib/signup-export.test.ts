@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bucketFolderName, buildPacket, wantsPacketSheets } from './signup-export'
+import { bucketFolderName, buildPacket, wantsBlankExams, wantsPacketSheets } from './signup-export'
 
 describe('bucketFolderName', () => {
   it('is the literal "Not signed up" for that bucket, regardless of rawLabel', () => {
@@ -47,6 +47,16 @@ describe('wantsPacketSheets', () => {
     // that is not happening.
     expect(wantsPacketSheets('not_signed_up')).toBe(false)
     expect(wantsPacketSheets('anything_else')).toBe(false)
+  })
+})
+
+describe('wantsBlankExams', () => {
+  it('puts spares only in real sessions, where someone can walk in by mistake', () => {
+    expect(wantsBlankExams('session')).toBe(true)
+    // An exception group is arranged with specific students; the other two
+    // piles are never proctored at all.
+    expect(wantsBlankExams('exception')).toBe(false)
+    expect(wantsBlankExams('not_signed_up')).toBe(false)
   })
 })
 

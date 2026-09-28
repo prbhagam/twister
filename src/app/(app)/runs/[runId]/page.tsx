@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { formatBlankLabel } from '@/lib/blank-exams'
 import { canvasPreflight } from '@/lib/export'
 import { prisma } from '@/lib/db'
 import { FLAGGED } from '@/lib/grading'
@@ -10,6 +11,7 @@ import { Badge, Button, Card, CardHeader, Empty, Notice } from '@/components/ui'
 import { DangerZone } from '@/components/DangerZone'
 import { deleteRun } from '../../actions'
 import { retryRun } from './actions'
+import { AbnormalAttendance } from './AbnormalAttendance'
 import { CanvasExport } from './CanvasExport'
 import { GradingPanel } from './GradingPanel'
 import { RunProgress } from './RunProgress'
@@ -51,12 +53,35 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
 
   const studentExams = await prisma.studentExam.findMany({
     where: { runId },
-    include: { student: true },
+    include: { student: true, blankExam: true },
   })
   // Keyed on whichever identifier the student has; gtId may be absent.
   const examIdByStudent = new Map(
     studentExams.map((se) => [se.student.gtId ?? se.student.username ?? se.student.email, se.id]),
   )
+  const blankLabelByExamId = new Map(
+    studentExams.flatMap((se) => (se.blankExam ? [[se.id, formatBlankLabel(se.blankExam.number)] as const] : [])),
+  )
+  const blanksIssued = await prisma.blankExam.count({ where: { runId } })
+
+  const attendanceStudents = studentExams
+    .slice()
+    .sort((a, b) => byLastName(a.student, b.student))
+    .map((se) => ({
+      studentExamId: se.id,
+      name: `${se.student.lastName}, ${se.student.firstName}`,
+      identity: se.student.gtId ?? se.student.username ?? se.student.email,
+    }))
+  const attendanceAssignments = studentExams
+    .flatMap((se) => (se.blankExam ? [{ se, blank: se.blankExam }] : []))
+    .sort((a, b) => a.blank.number - b.blank.number)
+    .map(({ se, blank }) => ({
+      studentExamId: se.id,
+      name: `${se.student.lastName}, ${se.student.firstName}`,
+      identity: se.student.gtId ?? se.student.username ?? se.student.email,
+      blankLabel: formatBlankLabel(blank.number),
+      sessionName: blank.sessionName,
+    }))
 
   const average =
     graded.length > 0
@@ -126,6 +151,19 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
 
           <Card>
             <CardHeader
+              title="Abnormal attendance"
+              subtitle="Students who sat a different session than they signed up for, on a blank exam"
+            />
+            <AbnormalAttendance
+              runId={run.id}
+              students={attendanceStudents}
+              assignments={attendanceAssignments}
+              blanksIssued={blanksIssued}
+            />
+          </Card>
+
+          <Card>
+            <CardHeader
               title="Students"
               subtitle={
                 graded.length > 0
@@ -154,6 +192,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
                       const flags = row.questions.filter(
                         (q) => FLAGGED.includes(q.verdict) && !q.overridden,
                       ).length
+                      const blankLabel = studentExamId ? blankLabelByExamId.get(studentExamId) : undefined
                       return (
                         <tr key={studentKey} className="hover:bg-slate-50">
                           <td className="px-5 py-1.5">
@@ -167,6 +206,11 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
                             ) : (
                               `${row.student.lastName}, ${row.student.firstName}`
                             )}
+                            {blankLabel ? (
+                              <span className="ml-2">
+                                <Badge tone="amber">abnormal · {blankLabel}</Badge>
+                              </span>
+                            ) : null}
                           </td>
                           <td className="px-3 py-1.5 font-mono text-xs text-slate-500">
                             {row.student.gtId ?? row.student.username ?? '—'}
@@ -211,7 +255,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
                   <DownloadLink
                     href={`/api/runs/${run.id}/by-session.zip`}
                     title="Exams by session (ZIP)"
-                    note="One folder per signup session, each led by a cover sheet and proctor instructions"
+                    note="One folder per signup session, each led by a cover sheet, proctor instructions, and three blank exams"
                   />
                 </>
               ) : null}

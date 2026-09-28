@@ -125,6 +125,7 @@ model Exam {
   course        Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
   questions     Question[]
   runs          GenerationRun[]
+  blankExams    BlankExam[]
   signupImports SignupImport[]
   signupBuckets SignupBucket[]
   signupRows    SignupRow[]
@@ -360,6 +361,7 @@ model GenerationRun {
   exam         Exam            @relation(fields: [examId], references: [id], onDelete: Cascade)
   questions    RunQuestion[]
   studentExams StudentExam[]
+  blankExams   BlankExam[]
   imports      GradingImport[]
 
   @@index([examId])
@@ -425,14 +427,56 @@ model StudentExam {
   // The decorative version name printed on this student's cover, if the exam
   // had any when the run was created. Recorded because it is on the paper.
   versionName String?
+  // Set when the student sat a different session than they signed up for and
+  // wrote on one of that session's blank papers instead of their own. Grading
+  // then reads the blank's layout, not this row's. Unique: a paper is used once.
+  blankExamId String?  @unique
   createdAt   DateTime @default(now())
 
   run       GenerationRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
   student   Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  blankExam BlankExam?      @relation(fields: [blankExamId], references: [id], onDelete: SetNull)
   results   StudentResult[]
   overrides Override[]
 
   @@unique([runId, studentId])
+  @@index([runId])
+}
+
+// A spare paper printed with no student on it, for someone who turns up at a
+// session they did not sign up for. A few go in every session folder of the
+// by-session ZIP, created the first time that session is exported and reused
+// on every later export, so a reprinted blank carries the same key.
+//
+// Frozen like a StudentExam — its own layout, seeded from its number rather
+// than from any student — and kept apart from StudentExam so an unused blank
+// never shows up in the roster, the scores, or the Canvas sync.
+model BlankExam {
+  id          String   @id @default(cuid())
+  runId       String
+  // Denormalized from the run so the printed number can be unique across every
+  // run of the exam: a stray BLANK-07 can never be mistaken for another run's.
+  examId      String
+  number      Int
+  // SignupBucket.naturalKey of the session it was issued to, plus that
+  // session's sign-up sheet label, kept even if the sheet later drops it.
+  sessionKey  String
+  sessionName String
+  // Position within its session, 1..BLANKS_PER_SESSION.
+  slot        Int
+  traceCode   String
+  layout      String // JSON ExamLayout entries, same shape as StudentExam.layout
+  versionName String?
+  pdfPath     String?
+  pageCount   Int?
+  createdAt   DateTime @default(now())
+
+  run    GenerationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  exam   Exam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  usedBy StudentExam?
+
+  @@unique([examId, number])
+  @@unique([runId, sessionKey, slot])
   @@index([runId])
 }
 

@@ -1,7 +1,7 @@
+import { answeredLayout, answeredTraceCode } from './blank-exams'
 import { prisma } from './db'
 import type { GradedQuestion, Verdict } from './grading'
 import type { ExportStudent, ScoreRow } from './export'
-import type { LayoutEntry } from './seed'
 
 /**
  * Assembles the score rows for a run's active grading import.
@@ -21,7 +21,7 @@ export async function loadScoreRows(runId: string): Promise<{
 
   const studentExams = await prisma.studentExam.findMany({
     where: { runId },
-    include: { student: true, overrides: true },
+    include: { student: true, overrides: true, blankExam: true },
   })
 
   // Fetched separately rather than as a conditional `include`, which would make the
@@ -35,7 +35,7 @@ export async function loadScoreRows(runId: string): Promise<{
   const resultByStudentExam = new Map(results.map((r) => [r.studentExamId, r]))
 
   const rows: ScoreRow[] = studentExams.map((se) => {
-    const layout = JSON.parse(se.layout) as LayoutEntry[]
+    const layout = answeredLayout(se)
     const student: ExportStudent = {
       firstName: se.student.firstName,
       lastName: se.student.lastName,
@@ -43,7 +43,7 @@ export async function loadScoreRows(runId: string): Promise<{
       username: se.student.username,
       email: se.student.email,
       sections: JSON.parse(se.student.sections) as string[],
-      traceCode: se.traceCode,
+      traceCode: answeredTraceCode(se),
     }
 
     const result = resultByStudentExam.get(se.id)

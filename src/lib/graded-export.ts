@@ -2,11 +2,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ZipArchive, type Archiver } from 'archiver'
+import { answeredLayout, answeredTraceCode } from './blank-exams'
 import { prisma } from './db'
 import { VERDICT_LABEL, type Verdict } from './grading'
 import { identityValue, parseIdentityField } from './identity'
 import { byLastName } from './roster'
-import { LETTERS, type LayoutEntry } from './seed'
+import { LETTERS } from './seed'
 import type { GradedReport, ReportQuestion } from './pdf/graded-report'
 import { ReportRenderer, stageReportAssets } from './pdf/report-renderer'
 
@@ -57,7 +58,7 @@ async function reportsForRun(runId: string): Promise<{ report: GradedReport; fol
     include: {
       exam: { include: { course: true } },
       questions: { include: { variations: { include: { choices: true } } } },
-      studentExams: { include: { student: true, overrides: true } },
+      studentExams: { include: { student: true, overrides: true, blankExam: true } },
     },
   })
 
@@ -102,7 +103,7 @@ async function reportsForRun(runId: string): Promise<{ report: GradedReport; fol
         examTitle: run.examTitle || run.exam.title,
         studentName: `${se.student.firstName} ${se.student.lastName}`,
         identifier,
-        traceCode: se.traceCode,
+        traceCode: answeredTraceCode(se),
       }
 
       const result = resultByStudentExam.get(se.id)
@@ -114,7 +115,7 @@ async function reportsForRun(runId: string): Promise<{ report: GradedReport; fol
         }
       }
 
-      const layout = (JSON.parse(se.layout) as LayoutEntry[]).sort((a, b) => a.position - b.position)
+      const layout = answeredLayout(se).sort((a, b) => a.position - b.position)
       const byPosition = new Map(result.questions.map((q) => [q.position, q]))
       const overrideByPosition = new Map(se.overrides.map((o) => [o.position, o]))
 

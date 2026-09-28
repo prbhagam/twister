@@ -9,7 +9,7 @@ import {
   matchStudents,
   parseGradescopeCsv,
 } from '@/lib/grading'
-import type { LayoutEntry } from '@/lib/seed'
+import { answeredLayout, formatBlankLabel, parseBlankLabel } from '@/lib/blank-exams'
 import { audit } from '@/lib/audit'
 import { requireRunPermission } from '@/lib/authorization'
 import { postCanvasGrade } from '@/lib/canvas'
@@ -98,7 +98,7 @@ export async function commitGrading(
 
   const studentExams = await prisma.studentExam.findMany({
     where: { runId },
-    include: { student: true, overrides: true },
+    include: { student: true, overrides: true, blankExam: true },
   })
   const report = matchStudents(
     parsed.rows,
@@ -135,7 +135,9 @@ export async function commitGrading(
     if (!studentExam) continue
 
     const result = gradeStudent({
-      layout: JSON.parse(studentExam.layout) as LayoutEntry[],
+      // The blank they wrote on, for a student who sat a different session;
+      // matching still went through their own GT ID, which they bubbled in.
+      layout: answeredLayout(studentExam),
       responses: row.responses,
       status: row.status,
       // Overrides live on the StudentExam, so they survive re-importing a
@@ -220,6 +222,152 @@ export async function setOverride(formData: FormData) {
   revalidatePath(`/runs/${runId}/students/${studentExamId}`)
   revalidatePath(`/runs/${runId}`)
   await audit({ actorUserId: user.id, action: 'grading.manual_override', entityType: 'student_exam', entityId: studentExamId, courseId: (await prisma.exam.findUniqueOrThrow({ where: { id: run.examId } })).courseId, metadata: { position, clear } })
+}
+
+/**
+ * Regrades one student in the active import from the responses already stored
+ * for them, against whichever paper they are now recorded as having used. Only
+ * a graded result is touched: a student Gradescope reported Missing has no
+ * responses to regrade.
+ */
+async function regradeFromStoredResponses(runId: string, studentExamId: string): Promise<void> {
+  const active = await prisma.gradingImport.findFirst({ where: { runId, isActive: true } })
+  if (!active) return
+  const result = await prisma.studentResult.findUnique({
+    where: { importId_studentExamId: { importId: active.id, studentExamId } },
+    include: { questions: true },
+  })
+  if (!result || result.status !== 'graded') return
+
+  const studentExam = await prisma.studentExam.findUniqueOrThrow({
+    where: { id: studentExamId },
+    include: { overrides: true, blankExam: true },
+  })
+  const regraded = gradeStudent({
+    layout: answeredLayout(studentExam),
+    responses: new Map(result.questions.map((q) => [q.position, q.rawResponse])),
+    status: result.status,
+    overrides: new Map(
+      studentExam.overrides.map((o) => [o.position, { awarded: o.awarded, note: o.note }]),
+    ),
+  })
+
+  await prisma.$transaction([
+    prisma.questionResult.deleteMany({ where: { resultId: result.id } }),
+    prisma.studentResult.update({
+      where: { id: result.id },
+      data: {
+        earned: regraded.earned,
+        possible: regraded.possible,
+        questions: {
+          create: regraded.questions.map((q) => ({
+            position: q.position,
+            rawResponse: q.rawResponse,
+            letters: JSON.stringify(q.letters),
+            verdict: q.verdict,
+            awarded: q.awarded,
+            possible: q.possible,
+          })),
+        },
+      },
+    }),
+  ])
+}
+
+export interface BlankAssignState {
+  ok?: boolean
+  error?: string
+  message?: string
+}
+
+/**
+ * Records that a student sat a session they did not sign up for, on one of
+ * that session's blank exams, and regrades them against it at once.
+ *
+ * Their overrides are cleared: each was entered against a question position on
+ * their own paper, and position 4 on the blank is a different question.
+ */
+export async function assignBlankExam(
+  _prev: BlankAssignState,
+  formData: FormData,
+): Promise<BlankAssignState> {
+  const runId = String(formData.get('runId'))
+  const { user, run } = await requireRunPermission(runId, 'grade:write')
+  const studentExamId = String(formData.get('studentExamId') ?? '')
+  const typed = String(formData.get('blank') ?? '')
+
+  const studentExam = await prisma.studentExam.findUnique({
+    where: { id: studentExamId },
+    include: { student: true, blankExam: true },
+  })
+  if (!studentExam || studentExam.runId !== runId) return { error: 'Choose a student from this run.' }
+
+  const number = parseBlankLabel(typed)
+  if (number === null) return { error: `"${typed.trim()}" is not a blank exam ID. Enter it as printed, e.g. ${formatBlankLabel(7)}.` }
+  const label = formatBlankLabel(number)
+
+  const blank = await prisma.blankExam.findUnique({
+    where: { examId_number: { examId: run.examId, number } },
+    include: { usedBy: { include: { student: true } } },
+  })
+  if (!blank) return { error: `No blank exam ${label} has been issued for this exam.` }
+  if (blank.runId !== runId) return { error: `${label} belongs to a different run of this exam.` }
+
+  const name = `${studentExam.student.firstName} ${studentExam.student.lastName}`
+  if (blank.usedBy?.id === studentExamId) return { ok: true, message: `${name} is already recorded on ${label}.` }
+  if (blank.usedBy) {
+    const other = blank.usedBy.student
+    return { error: `${label} is already recorded for ${other.firstName} ${other.lastName}. Remove that first if it was a mistake.` }
+  }
+
+  const [cleared] = await prisma.$transaction([
+    prisma.override.deleteMany({ where: { studentExamId } }),
+    prisma.studentExam.update({ where: { id: studentExamId }, data: { blankExamId: blank.id } }),
+  ])
+  await regradeFromStoredResponses(runId, studentExamId)
+
+  revalidatePath(`/runs/${runId}`)
+  revalidatePath(`/runs/${runId}/students/${studentExamId}`)
+  await audit({
+    actorUserId: user.id,
+    action: 'grading.blank_exam_assigned',
+    entityType: 'student_exam',
+    entityId: studentExamId,
+    courseId: (await prisma.exam.findUniqueOrThrow({ where: { id: run.examId } })).courseId,
+    metadata: { blankExamId: blank.id, label, replaced: studentExam.blankExamId, clearedOverrides: cleared.count },
+  })
+
+  const overrideNote = cleared.count > 0 ? ` Cleared ${cleared.count} manual override${cleared.count === 1 ? '' : 's'}.` : ''
+  return { ok: true, message: `${name} now grades against ${label}.${overrideNote}` }
+}
+
+/** Undoes assignBlankExam: the student grades against their own paper again. */
+export async function clearBlankExam(formData: FormData) {
+  const runId = String(formData.get('runId'))
+  const studentExamId = String(formData.get('studentExamId'))
+  const { user, run } = await requireRunPermission(runId, 'grade:write')
+
+  const studentExam = await prisma.studentExam.findUnique({ where: { id: studentExamId } })
+  if (!studentExam || studentExam.runId !== runId || !studentExam.blankExamId) return
+
+  // Same reason as assigning: the overrides were entered against the blank's
+  // question order, which no longer applies.
+  await prisma.$transaction([
+    prisma.override.deleteMany({ where: { studentExamId } }),
+    prisma.studentExam.update({ where: { id: studentExamId }, data: { blankExamId: null } }),
+  ])
+  await regradeFromStoredResponses(runId, studentExamId)
+
+  revalidatePath(`/runs/${runId}`)
+  revalidatePath(`/runs/${runId}/students/${studentExamId}`)
+  await audit({
+    actorUserId: user.id,
+    action: 'grading.blank_exam_cleared',
+    entityType: 'student_exam',
+    entityId: studentExamId,
+    courseId: (await prisma.exam.findUniqueOrThrow({ where: { id: run.examId } })).courseId,
+    metadata: { blankExamId: studentExam.blankExamId },
+  })
 }
 
 /** Re-renders every PDF for a run — used after a failed or interrupted run. */

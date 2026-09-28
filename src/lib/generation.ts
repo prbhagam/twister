@@ -1,10 +1,16 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import {
+  BLANKS_PER_SESSION,
+  blankPdfFileName,
+  blankSeedIdentity,
+  formatBlankLabel,
+} from './blank-exams'
 import { prisma } from './db'
 import { hasBlockingErrors, validateExam } from './exam-validation'
 import { identityValue, parseIdentityField, studentsMissingIdentity } from './identity'
 import { renderMarkdown } from './markdown'
-import type { RenderExam } from './pdf/exam-html'
+import type { RenderExam, RenderQuestion } from './pdf/exam-html'
 import { ExamRenderer, buildPrintFile, stageRenderAssets } from './pdf/renderer'
 import { byLastName } from './roster'
 import { isStudentExcluded, parseSectionCodes } from './sections'
@@ -29,6 +35,71 @@ function pdfFileName(student: { lastName: string; firstName: string }, identity:
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
   return `${slug}-${identity}.pdf`
+}
+
+/** The parts of a run's frozen question snapshot that layout and rendering read. */
+interface SnapshotQuestion {
+  id: string
+  sourceQuestionId: string
+  order: number
+  points: number
+  variations: {
+    id: string
+    order: number
+    promptHtml: string
+    choices: { id: string; order: number; textHtml: string; isCorrect: boolean; pinToLast: boolean }[]
+  }[]
+}
+
+/**
+ * Seeding keys off the *authoring* ids so the same student regenerates
+ * identically across runs, while refIds point at this run's frozen copies.
+ */
+function seedQuestionsFor(questions: SnapshotQuestion[]): SeedQuestion[] {
+  return questions
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((q) => ({
+      key: q.sourceQuestionId,
+      refId: q.id,
+      points: q.points,
+      variations: q.variations
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map((v) => ({
+          refId: v.id,
+          choices: v.choices
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .map((c) => ({ refId: c.id, isCorrect: c.isCorrect, pinToLast: c.pinToLast })),
+        })),
+    }))
+}
+
+/** Flattens the snapshot into lookup tables once, so rendering each paper is
+ * a handful of map reads rather than a walk of the whole question tree. */
+function snapshotLookups(questions: SnapshotQuestion[]) {
+  const variationHtml = new Map<string, string>()
+  const choiceHtml = new Map<string, string>()
+  const questionPoints = new Map<string, number>()
+  for (const q of questions) {
+    questionPoints.set(q.id, q.points)
+    for (const v of q.variations) {
+      variationHtml.set(v.id, v.promptHtml)
+      for (const c of v.choices) choiceHtml.set(c.id, c.textHtml)
+    }
+  }
+
+  return (layout: LayoutEntry[]): RenderQuestion[] =>
+    layout
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((entry) => ({
+        position: entry.position,
+        points: entry.points ?? questionPoints.get(entry.runQuestionId) ?? 1,
+        promptHtml: variationHtml.get(entry.runVariationId) ?? '',
+        choicesHtml: entry.choiceOrder.map((id) => choiceHtml.get(id) ?? ''),
+      }))
 }
 
 /**
@@ -186,26 +257,7 @@ export async function createRun(params: {
     data: { outputDir: runDir(run.id) },
   })
 
-  // Seeding keys off the *authoring* ids so the same student regenerates identically
-  // across runs, while refIds point at this run's frozen copies.
-  const seedQuestions: SeedQuestion[] = run.questions
-    .slice()
-    .sort((a, b) => a.order - b.order)
-    .map((q) => ({
-      key: q.sourceQuestionId,
-      refId: q.id,
-      points: q.points,
-      variations: q.variations
-        .slice()
-        .sort((a, b) => a.order - b.order)
-        .map((v) => ({
-          refId: v.id,
-          choices: v.choices
-            .slice()
-            .sort((a, b) => a.order - b.order)
-            .map((c) => ({ refId: c.id, isCorrect: c.isCorrect, pinToLast: c.pinToLast })),
-        })),
-    }))
+  const seedQuestions = seedQuestionsFor(run.questions)
 
   const versionNames = parseStoredVersionNames(exam.versionNames)
 
@@ -259,17 +311,7 @@ export async function executeRun(runId: string): Promise<void> {
     data: { status: 'running', completedCount: 0, error: null, outputDir: dir },
   })
 
-  // Flatten the snapshot into lookup tables once.
-  const variationHtml = new Map<string, string>()
-  const choiceHtml = new Map<string, string>()
-  const questionPoints = new Map<string, number>()
-  for (const q of run.questions) {
-    questionPoints.set(q.id, q.points)
-    for (const v of q.variations) {
-      variationHtml.set(v.id, v.promptHtml)
-      for (const c of v.choices) choiceHtml.set(c.id, c.textHtml)
-    }
-  }
+  const renderQuestions = snapshotLookups(run.questions)
 
   const runIdentityField = parseIdentityField(run.identityField)
   const instructionsHtml = run.instructions ? await renderMarkdown(run.instructions) : undefined
@@ -322,15 +364,7 @@ export async function executeRun(runId: string): Promise<void> {
           versionName: item.versionName ?? undefined,
           instructionsHtml,
           katexHref: 'katex.min.css',
-          questions: layout
-            .slice()
-            .sort((a, b) => a.position - b.position)
-            .map((entry) => ({
-              position: entry.position,
-              points: entry.points ?? questionPoints.get(entry.runQuestionId) ?? 1,
-              promptHtml: variationHtml.get(entry.runVariationId) ?? '',
-              choicesHtml: entry.choiceOrder.map((id) => choiceHtml.get(id) ?? ''),
-            })),
+          questions: renderQuestions(layout),
         }
 
         const { pdf, pageCount } = await renderer.render(exam)
@@ -379,6 +413,128 @@ export async function executeRun(runId: string): Promise<void> {
       },
     })
     throw error
+  } finally {
+    await renderer.close()
+  }
+}
+
+export interface BlankSession {
+  /** SignupBucket.naturalKey — stable across re-syncs of the sheet. */
+  key: string
+  /** The session as the sign-up sheet wrote it, recorded on each blank for display. */
+  name: string
+}
+
+/**
+ * Makes sure each session has its BLANKS_PER_SESSION blank exams in this run,
+ * creating whichever are missing. Creates rows only; renderPendingBlanks draws
+ * their PDFs.
+ *
+ * Idempotent, so the by-session ZIP can call it on every download: a session
+ * gets its blanks the first time it is exported and keeps the same ones after,
+ * which is what lets a reprinted blank still grade against its recorded key.
+ *
+ * Numbers are allocated across every run of the exam, not just this one, so no
+ * two blanks for the same exam ever print the same label.
+ */
+export async function ensureSessionBlanks(runId: string, sessions: BlankSession[]): Promise<void> {
+  if (sessions.length > 0) {
+    const run = await prisma.generationRun.findUniqueOrThrow({
+      where: { id: runId },
+      include: {
+        exam: true,
+        questions: { include: { variations: { include: { choices: true } } } },
+      },
+    })
+    const seedQuestions = seedQuestionsFor(run.questions)
+    // The exam's current list, not a snapshot: the run never recorded one, and
+    // the name is decorative. It is fixed on the blank once chosen.
+    const versionNames = parseStoredVersionNames(run.exam.versionNames)
+
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.blankExam.findMany({ where: { runId }, select: { sessionKey: true, slot: true } })
+      const have = new Set(existing.map((b) => `${b.sessionKey}\u0000${b.slot}`))
+      const highest = await tx.blankExam.aggregate({ where: { examId: run.examId }, _max: { number: true } })
+      let next = (highest._max.number ?? 0) + 1
+
+      for (const session of sessions) {
+        for (let slot = 1; slot <= BLANKS_PER_SESSION; slot++) {
+          if (have.has(`${session.key}\u0000${slot}`)) continue
+          const number = next++
+          // Seeded exactly the way a student's paper is, from the run's own
+          // snapshot of the instructor seed, with the blank's number standing in
+          // for the student's identity.
+          const identity = blankSeedIdentity(number)
+          const layout = buildLayout({
+            instructorSeed: run.seedUsed,
+            examId: run.examId,
+            gtId: identity,
+            questions: seedQuestions,
+          })
+          await tx.blankExam.create({
+            data: {
+              runId,
+              examId: run.examId,
+              number,
+              sessionKey: session.key,
+              sessionName: session.name,
+              slot,
+              traceCode: layout.traceCode,
+              layout: JSON.stringify(layout.entries),
+              versionName: pickVersionName({
+                instructorSeed: run.seedUsed,
+                examId: run.examId,
+                gtId: identity,
+                names: versionNames,
+              }),
+            },
+          })
+        }
+      }
+    })
+  }
+}
+
+/**
+ * Renders every blank in this run that has no PDF yet. Blanks already rendered
+ * are left alone, so after a session's first export this launches nothing.
+ */
+export async function renderPendingBlanks(runId: string): Promise<void> {
+  const pending = await prisma.blankExam.findMany({ where: { runId, pdfPath: null } })
+  if (pending.length === 0) return
+
+  const run = await prisma.generationRun.findUniqueOrThrow({
+    where: { id: runId },
+    include: { questions: { include: { variations: { include: { choices: true } } } } },
+  })
+  const renderQuestions = snapshotLookups(run.questions)
+  const instructionsHtml = run.instructions ? await renderMarkdown(run.instructions) : undefined
+
+  const dir = runDir(runId)
+  await mkdir(dir, { recursive: true })
+  const renderer = await ExamRenderer.launch({ shellPath: await stageRenderAssets(dir) })
+  try {
+    await Promise.all(
+      pending.map(async (blank) => {
+        const { pdf, pageCount } = await renderer.render({
+          examTitle: run.examTitle,
+          courseName: run.courseName,
+          // Left empty for the student to write in; nothing is stamped on the
+          // bubble sheet either, so Gradescope reads the ID they bubble.
+          studentName: '',
+          gtId: '',
+          blankLabel: formatBlankLabel(blank.number),
+          traceCode: blank.traceCode,
+          versionName: blank.versionName ?? undefined,
+          instructionsHtml,
+          katexHref: 'katex.min.css',
+          questions: renderQuestions(JSON.parse(blank.layout) as LayoutEntry[]),
+        })
+        const fileName = blankPdfFileName(blank.number)
+        await writeFile(path.join(dir, fileName), pdf)
+        await prisma.blankExam.update({ where: { id: blank.id }, data: { pdfPath: fileName, pageCount } })
+      }),
+    )
   } finally {
     await renderer.close()
   }

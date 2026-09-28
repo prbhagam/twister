@@ -59,6 +59,9 @@ export interface SessionPacket {
   /** Exactly the students whose papers are in this folder, so the roster length
    * and the cover sheet's paper count can never disagree with the stack. */
   students: PacketStudent[]
+  /** Labels of the blank exams in this folder ("BLANK-07"), for students who
+   * turn up at the wrong session. Empty for a folder that carries none. */
+  blanks: string[]
 }
 
 interface Fonts {
@@ -313,9 +316,13 @@ export async function buildCoverSheetPdf(packet: SessionPacket): Promise<Uint8Ar
   drawRule(page, innerRuleY)
 
   drawLabel(page, fonts, 'Papers in this packet', { x: MARGIN, y: countLabelY })
-  const count = String(packet.students.length)
+  const count = String(packet.students.length + packet.blanks.length)
+  const blankNote =
+    packet.blanks.length > 0
+      ? `Includes ${packet.blanks.length} blank exam${packet.blanks.length === 1 ? '' : 's'}. `
+      : ''
   drawText(page, count, { x: MARGIN, y: countY, size: 34, font: fonts.bold })
-  drawText(page, 'Count them before you leave, and again when they come back.', {
+  drawText(page, `${blankNote}Count them before you leave, and again when they come back.`, {
     x: MARGIN + 14 + fonts.bold.widthOfTextAtSize(count, 34),
     y: countY + 3,
     size: 9,
@@ -383,8 +390,13 @@ export interface InstructionSection {
  * The default proctor script. Deliberately a plain data structure and nothing
  * more: this is course policy, not program logic, and it is expected to be
  * edited here directly as a course's own rules settle.
+ *
+ * Two versions of the check-in advice, because what a TA does with a student
+ * who is not on the roster depends on whether the packet carries blank exams to
+ * hand them. The script must still fit one side either way.
  */
-export const TA_INSTRUCTIONS: InstructionSection[] = [
+export function proctorInstructions(hasBlanks: boolean): InstructionSection[] {
+  return [
   {
     heading: 'Before the session',
     items: [
@@ -397,17 +409,25 @@ export const TA_INSTRUCTIONS: InstructionSection[] = [
   {
     heading: 'Checking students in',
     items: [
-      "Every paper is unique to the student whose name is printed on it. Hand each student only their own paper - never a spare, never a neighbour's.",
+      hasBlanks
+        ? "Every paper is unique to the student whose name is printed on it. Hand each student only their own paper - never a neighbour's. Blank exams are the one exception."
+        : "Every paper is unique to the student whose name is printed on it. Hand each student only their own paper - never a spare, never a neighbour's.",
       "Check each student's BuzzCard against the roster and tick their box as they are seated.",
-      'A student who is not on the roster may have signed up for a different session. Do not turn them away: seat them, write them in at the end of the roster, and tell the instructor.',
-      'Leftover papers stay in the packet. They go back to the instructor unused.',
+      hasBlanks
+        ? "A student who is not on the roster may have signed up for a different session. Do not turn them away: give them a blank exam, and write their name and GT ID next to that blank's number at the end of the roster."
+        : 'A student who is not on the roster may have signed up for a different session. Do not turn them away: seat them, write them in at the end of the roster, and tell the instructor.',
+      hasBlanks
+        ? 'Leftover papers, unused blank exams included, stay in the packet. They go back to the instructor unused.'
+        : 'Leftover papers stay in the packet. They go back to the instructor unused.',
     ],
   },
   {
     heading: 'Starting the exam',
     items: [
       'Write the start time and the end time on the board, and announce both.',
-      "The bubble sheet is the first page and is already printed with the student's name and GT ID. Have each student confirm the printed name is theirs, then tear the bubble sheet off the packet.",
+      hasBlanks
+        ? "The bubble sheet is the first page and is already printed with the student's name and GT ID; on a blank exam the student writes both in by hand. Then tear the bubble sheet off."
+        : "The bubble sheet is the first page and is already printed with the student's name and GT ID. Have each student confirm the printed name is theirs, then tear the bubble sheet off the packet.",
       'Remind students that answers only count if they are marked on the bubble sheet, in pencil, filled in completely.',
       'Permitted: pencils, erasers, and anything the instructor announced for this exam. Not permitted: phones, smart watches, earbuds, or notes.',
     ],
@@ -439,7 +459,11 @@ export const TA_INSTRUCTIONS: InstructionSection[] = [
       'Never photograph, scan, email, or copy an exam paper, and do not discuss it with anyone who has not sat it yet.',
     ],
   },
-]
+  ]
+}
+
+/** The script for a folder with no blank exams in it. */
+export const TA_INSTRUCTIONS: InstructionSection[] = proctorInstructions(false)
 
 /** Where a flowing page is allowed to put its last baseline — clear of the page
  * number, which sits at MARGIN - 16. */
@@ -488,7 +512,7 @@ function fits(flow: Flow, height: number): boolean {
  */
 export async function buildInstructionsPdf(
   packet: SessionPacket,
-  sections: InstructionSection[] = TA_INSTRUCTIONS,
+  sections: InstructionSection[] = proctorInstructions(packet.blanks.length > 0),
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
   const fonts: Fonts = {
@@ -532,20 +556,27 @@ const ROSTER_ROW_H = 15.5
 /** One slot in the roster grid: a student, the write-in heading, or a blank
  * write-in rule. The write-in rows are part of the same flowing list rather than
  * a block reserved at the foot of the page — reserving it cost every roster page
- * six rows a column, which is most of a page across a large session. */
+ * six rows a column, which is most of a page across a large session.
+ *
+ * A folder carrying blank exams gets one write-in row per blank, labelled with
+ * its number, in place of the anonymous ones: the TA's note of who took which
+ * blank is how the instructor grades that student against the right key. */
 type RosterSlot =
   | { kind: 'student'; student: PacketStudent }
   | { kind: 'gap' }
   | { kind: 'write-in-heading' }
-  | { kind: 'write-in' }
+  | { kind: 'write-in'; blank?: string }
 
-export function rosterSlots(students: PacketStudent[]): RosterSlot[] {
+export function rosterSlots(students: PacketStudent[], blanks: string[] = []): RosterSlot[] {
+  const writeIns: RosterSlot[] =
+    blanks.length > 0
+      ? blanks.map((blank) => ({ kind: 'write-in', blank }))
+      : [{ kind: 'write-in' }, { kind: 'write-in' }]
   return [
     ...students.map((student): RosterSlot => ({ kind: 'student', student })),
     { kind: 'gap' }, // so the write-in block reads as its own thing, not row n+1
     { kind: 'write-in-heading' },
-    { kind: 'write-in' },
-    { kind: 'write-in' },
+    ...writeIns,
   ]
 }
 
@@ -567,7 +598,7 @@ function drawRoster(
   let page = doc.getPage(doc.getPageCount() - 1)
   const rowsPerColumn = Math.max(1, Math.floor((top - FLOW_BOTTOM - 5) / ROSTER_ROW_H) + 1)
   const perPage = rowsPerColumn * columns.length
-  const slots = rosterSlots(students)
+  const slots = rosterSlots(students, packet.blanks)
 
   for (let i = 0; i < slots.length; i += perPage) {
     if (i > 0) {
@@ -580,9 +611,10 @@ function drawRoster(
       if (slot.kind === 'student') {
         drawRosterRow(page, fonts, { x: col.x, y, width: col.width, student: slot.student })
       } else if (slot.kind === 'write-in-heading') {
-        drawLabel(page, fonts, 'Not on this roster', { x: col.x, y: y - 2, size: 8, color: INK })
+        const heading = packet.blanks.length > 0 ? 'Not on this roster: blank exam, name, GT ID' : 'Not on this roster'
+        drawLabel(page, fonts, heading, { x: col.x, y: y - 2, size: 8, color: INK })
       } else if (slot.kind === 'write-in') {
-        drawWriteInRow(page, { x: col.x, y, width: col.width })
+        drawWriteInRow(page, fonts, { x: col.x, y, width: col.width, blank: slot.blank })
       }
     }
   }
@@ -612,10 +644,16 @@ function drawRosterRow(
   drawRule(page, opts.y - 5.5, opts.x, opts.width, 0.4)
 }
 
-/** An empty row in the same shape, for a student who turns up unexpectedly. */
-function drawWriteInRow(page: PDFPage, opts: { x: number; y: number; width: number }) {
+/** An empty row in the same shape, for a student who turns up unexpectedly —
+ * led by the blank exam's number when there is one for them to take. */
+function drawWriteInRow(page: PDFPage, fonts: Fonts, opts: { x: number; y: number; width: number; blank?: string }) {
   drawCheckbox(page, opts.x, opts.y)
-  drawRule(page, opts.y - 5.5, opts.x + ROSTER_TEXT_X, opts.width - ROSTER_TEXT_X, 0.75, RULE_STRONG)
+  let ruleX = opts.x + ROSTER_TEXT_X
+  if (opts.blank) {
+    drawText(page, opts.blank, { x: ruleX, y: opts.y, size: 8.5, font: fonts.bold })
+    ruleX += fonts.bold.widthOfTextAtSize(printable(opts.blank), 8.5) + 6
+  }
+  drawRule(page, opts.y - 5.5, ruleX, opts.x + opts.width - ruleX, 0.75, RULE_STRONG)
 }
 
 const CHECKBOX = 9.5
