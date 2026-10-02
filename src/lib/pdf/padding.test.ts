@@ -28,19 +28,47 @@ describe('padBooklet', () => {
     expect(doc.getPageCount()).toBe(22)
   })
 
-  it('leaves an even booklet alone', async () => {
+  it('gives an even booklet a whole sheet of filler', async () => {
+    // An even booklet already ends even, but it ends on *content* — and duplex puts
+    // an even page on the back of its sheet, so that content is the back cover.
+    // Clearing the back costs a full sheet: one filler would only make it odd.
     const doc = await bookletOf(22)
     await padBooklet(doc, exam)
-    expect(doc.getPageCount()).toBe(22)
+    expect(doc.getPageCount()).toBe(24)
   })
 
-  it('never adds more than one page', async () => {
+  it('never adds more than one sheet, and always lands even', async () => {
     for (const n of [1, 2, 3, 20, 21, 22, 23]) {
       const doc = await bookletOf(n)
       await padBooklet(doc, exam)
-      expect(doc.getPageCount() - n).toBeLessThanOrEqual(1)
+      expect(doc.getPageCount() - n).toBeLessThanOrEqual(2)
       expect(doc.getPageCount() % 2).toBe(0)
     }
+  })
+
+  it('always ends on a filler, so the back cover is never a question page', async () => {
+    // The guarantee, stated directly: page T of an even T-page duplex booklet is
+    // the outward-facing back. bookletOf() leaves its pages bare, so a drawn
+    // content stream is what separates a filler from a body page.
+    for (const n of [1, 2, 3, 20, 21, 22, 23]) {
+      const doc = await bookletOf(n)
+      await padBooklet(doc, exam)
+
+      expect(doc.getPageCount() % 2).toBe(0)
+      expect(doc.getPage(doc.getPageCount() - 1).node.Contents()).toBeDefined()
+      // The page that *was* last is untouched body, confirming nothing was drawn
+      // over the questions to achieve this.
+      expect(doc.getPage(n - 1).node.Contents()).toBeUndefined()
+    }
+  })
+
+  it('fills both sides of the extra sheet when it adds one', async () => {
+    // The added sheet is blank front and back. Leaving its front bare would read as
+    // a misprint to a student thumbing back through the packet.
+    const doc = await bookletOf(22)
+    await padBooklet(doc, exam)
+    expect(doc.getPage(22).node.Contents()).toBeDefined()
+    expect(doc.getPage(23).node.Contents()).toBeDefined()
   })
 
   it('adds the filler at the end, not before the questions', async () => {

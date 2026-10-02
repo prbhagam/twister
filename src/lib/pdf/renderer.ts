@@ -2,7 +2,7 @@ import { cp, mkdir, writeFile } from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import { chromium, type Browser, type Page } from 'playwright'
 import {
   BUBBLE_SHEET_PATH,
@@ -94,22 +94,8 @@ export async function addScantronBackPage(doc: PDFDocument): Promise<void> {
   })
 }
 
-/**
- * Appends a filler page when a booklet would otherwise end on an odd page.
- *
- * Without this, printing the merged file double-sided puts the *next* student's
- * bubble sheet on the back of this student's last page. Every booklet ending on an
- * even page guarantees each one starts on a fresh sheet.
- *
- * The page says so explicitly rather than being blank, so nobody thinks their
- * booklet was misprinted, and it carries the same footer so a loose sheet can still
- * be traced back to its owner.
- */
-export async function padBooklet(doc: PDFDocument, exam: RenderExam): Promise<void> {
-  if (doc.getPageCount() % 2 === 0) return
-
-  const font = await doc.embedFont(StandardFonts.Helvetica)
-  const page = doc.addPage(SHEET_SIZE)
+/** The notice-and-footer treatment every parity filler page carries. */
+function drawFillerPage(page: PDFPage, font: PDFFont, exam: RenderExam): void {
   const [width, height] = SHEET_SIZE
 
   // Neutral greys matched to the print palette: the blue-greys these replaced were
@@ -142,6 +128,36 @@ export async function padBooklet(doc: PDFDocument, exam: RenderExam): Promise<vo
     font,
     color: footer,
   })
+}
+
+/**
+ * Appends filler pages so the booklet ends on an even page *and* its final page is
+ * one of those fillers.
+ *
+ * Two guarantees, which need different numbers of pages:
+ *
+ *  - **An even total**, so printing the merged file double-sided never lands the
+ *    *next* student's bubble sheet on the back of this student's last page. Every
+ *    booklet starts on a fresh sheet.
+ *  - **A blank back cover.** Duplex printing puts every even page on the *back* of
+ *    its sheet, so a booklet that merely ends even ends with questions facing
+ *    outward. Flip the packet over, or leave it face-down on the desk before the
+ *    exam starts, and the last page reads without opening anything.
+ *
+ * An odd booklet gets both from a single filler. An even one already ends even but
+ * ends on content, so it takes two — a whole extra sheet, filler on both sides.
+ * That is the unavoidable price of the back cover: content cannot be moved off the
+ * final side without adding a side.
+ *
+ * The pages say so explicitly rather than being bare, so nobody thinks their
+ * booklet was misprinted, and each carries the same footer as the rendered pages so
+ * a loose sheet can still be traced back to its owner.
+ */
+export async function padBooklet(doc: PDFDocument, exam: RenderExam): Promise<void> {
+  const fillers = doc.getPageCount() % 2 === 1 ? 1 : 2
+
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  for (let i = 0; i < fillers; i++) drawFillerPage(doc.addPage(SHEET_SIZE), font, exam)
 }
 
 /**
