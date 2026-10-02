@@ -10,6 +10,7 @@ import {
   parseGradescopeCsv,
 } from '@/lib/grading'
 import { answeredLayout, formatBlankLabel, parseBlankLabel } from '@/lib/blank-exams'
+import { readExtraCredit } from '@/lib/extra-credit'
 import { audit } from '@/lib/audit'
 import { requireRunPermission } from '@/lib/authorization'
 import { postCanvasGrade } from '@/lib/canvas'
@@ -50,7 +51,7 @@ export async function previewGrading(
   formData: FormData,
 ): Promise<GradingPreviewState> {
   const runId = String(formData.get('runId'))
-  await requireRunPermission(runId, 'grade:write')
+  const { run } = await requireRunPermission(runId, 'grade:write')
   const file = formData.get('file')
   if (!(file instanceof File) || file.size === 0) return { error: 'Choose a Gradescope CSV to upload.' }
 
@@ -59,7 +60,9 @@ export async function previewGrading(
   if (parsed.errors.length) return { error: parsed.errors.join(' ') }
 
   const questionCount = await prisma.runQuestion.count({ where: { runId } })
-  const coverageError = checkPositionCoverage(parsed.positions, questionCount)
+  // The bonus row sits past the exam's own questions, so the export legitimately
+  // carries more columns than the run has questions. See checkPositionCoverage.
+  const coverageError = checkPositionCoverage(parsed.positions, questionCount, run.extraCreditPosition)
   if (coverageError) return { error: coverageError }
 
   const report = matchStudents(parsed.rows, await runStudents(runId))
@@ -140,6 +143,9 @@ export async function commitGrading(
       layout: answeredLayout(studentExam),
       responses: row.responses,
       status: row.status,
+      // Read off the run, not the exam: a combination edited since this run was
+      // generated must not regrade papers printed against the old one.
+      extraCredit: readExtraCredit(run),
       // Overrides live on the StudentExam, so they survive re-importing a
       // corrected CSV rather than being wiped by it.
       overrides: new Map(
@@ -233,6 +239,7 @@ export async function setOverride(formData: FormData) {
 async function regradeFromStoredResponses(runId: string, studentExamId: string): Promise<void> {
   const active = await prisma.gradingImport.findFirst({ where: { runId, isActive: true } })
   if (!active) return
+  const run = await prisma.generationRun.findUniqueOrThrow({ where: { id: runId } })
   const result = await prisma.studentResult.findUnique({
     where: { importId_studentExamId: { importId: active.id, studentExamId } },
     include: { questions: true },
@@ -247,6 +254,7 @@ async function regradeFromStoredResponses(runId: string, studentExamId: string):
     layout: answeredLayout(studentExam),
     responses: new Map(result.questions.map((q) => [q.position, q.rawResponse])),
     status: result.status,
+    extraCredit: readExtraCredit(run),
     overrides: new Map(
       studentExam.overrides.map((o) => [o.position, { awarded: o.awarded, note: o.note }]),
     ),

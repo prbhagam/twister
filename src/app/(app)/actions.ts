@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db'
 import { parseIdentityField } from '@/lib/identity'
 import { versionNamesFromText } from '@/lib/version-names'
 import { audit } from '@/lib/audit'
+import { parseExtraCreditLetters } from '@/lib/extra-credit'
 import { purgeArchivedCourse, restoreArchivedCourse } from '@/lib/course-admin'
 import { can, requireCoursePermission, requireExamPermission, requireRunPermission, requireUser } from '@/lib/authorization'
 
@@ -191,6 +192,50 @@ export async function updateExam(formData: FormData) {
       ...(lockIdentity ? {} : { identityField }),
       ...(lockPracticeExam ? {} : { isPracticeExam: formData.get('isPracticeExam') === 'on' }),
     },
+  })
+  revalidatePath(`/exams/${examId}`)
+}
+
+/**
+ * Saves the exam's extra-credit row.
+ *
+ * Its own form rather than another field on `updateExam`: a disabled or absent
+ * input submits nothing, and a shared form would then read a saved bonus back as
+ * "switched off" the next time anyone touched the title.
+ *
+ * Whatever is typed is stored, even when it cannot work — a row number colliding
+ * with a real question, say. `validateExam` is what blocks generation, which keeps
+ * every pre-flight problem in the one Validation list instead of splitting them
+ * between a panel and a form error nobody sees again.
+ */
+export async function updateExtraCredit(formData: FormData) {
+  const examId = String(formData.get('examId'))
+  const user = await requireExamPermission(examId, 'course:manage')
+  const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
+
+  const typed = String(formData.get('extraCreditPosition') ?? '').trim()
+  const parsed = Number(typed)
+  const position = typed && Number.isInteger(parsed) ? parsed : null
+  const { letters } = parseExtraCreditLetters(String(formData.get('extraCreditLetters') ?? ''))
+
+  await prisma.exam.update({
+    where: { id: examId },
+    data: {
+      // A blank question number switches the bonus off. The letters are kept
+      // either way, so turning it back on does not mean retyping the combination.
+      extraCreditPosition: position,
+      extraCreditLetters: JSON.stringify(letters),
+      extraCreditOnPaper: formData.get('extraCreditOnPaper') === 'on',
+    },
+  })
+
+  await audit({
+    actorUserId: user.id,
+    action: 'exam.extra_credit_updated',
+    entityType: 'exam',
+    entityId: examId,
+    courseId: exam.courseId,
+    metadata: { position, letters },
   })
   revalidatePath(`/exams/${examId}`)
 }

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { validateExam } from '@/lib/exam-validation'
+import { EXTRA_CREDIT_POINTS, SHEET_ROWS, formatExtraCreditLetters } from '@/lib/extra-credit'
 import { IDENTITY_HINT, IDENTITY_LABEL, IDENTITY_FIELDS, parseIdentityField, studentsMissingIdentity } from '@/lib/identity'
 import { toPlainSummary } from '@/lib/markdown'
 import { practiceVariantLabels } from '@/lib/practice-exam'
@@ -10,7 +11,7 @@ import { distinctExamCount, formatBig } from '@/lib/seed'
 import { parseStoredVersionNames } from '@/lib/version-names'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label, LinkButton, Notice, Textarea } from '@/components/ui'
 import { DangerZone } from '@/components/DangerZone'
-import { deleteExam, updateExam } from '../../actions'
+import { deleteExam, updateExam, updateExtraCredit } from '../../actions'
 import { addQuestion, approveAllQuestions, moveQuestion, transitionQuestionStatus } from './actions'
 import { CsvImport } from './CsvImport'
 import { GeneratePanel } from './GeneratePanel'
@@ -42,6 +43,9 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
   if (!exam) notFound()
 
   const issues = validateExam(exam)
+  const extraCreditLetters = JSON.parse(exam.extraCreditLetters) as string[]
+  // Where a sensible row sits: past the last question, inside the sheet.
+  const suggestedExtraCreditRow = Math.min(SHEET_ROWS, Math.max(exam.questions.length + 1, 92))
   const errors = issues.filter((i) => i.level === 'error')
   const warnings = issues.filter((i) => i.level === 'warning')
 
@@ -411,6 +415,82 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
               )}
               <Button type="submit" className="w-full">
                 Save settings
+              </Button>
+            </form>
+          </Card>
+
+          <Card className="p-5">
+            <h2 className="mb-1 text-sm font-semibold">Extra credit</h2>
+            <p className="mb-3 text-xs text-slate-500">
+              One bonus {EXTRA_CREDIT_POINTS === 1 ? 'point' : 'points'} for bubbling a fixed
+              combination under a question number past the end of the exam. It is added to the
+              score and not to what the exam is out of, so a perfect paper plus the bonus is{' '}
+              {exam.questions.length + EXTRA_CREDIT_POINTS}/{exam.questions.length}.
+            </p>
+            <form action={updateExtraCredit} className="space-y-3">
+              <input type="hidden" name="examId" value={exam.id} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="extraCreditPosition">Question number</Label>
+                  <Input
+                    id="extraCreditPosition"
+                    name="extraCreditPosition"
+                    type="number"
+                    min={exam.questions.length + 1}
+                    max={SHEET_ROWS}
+                    defaultValue={exam.extraCreditPosition ?? ''}
+                    placeholder={String(suggestedExtraCreditRow)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="extraCreditLetters">Letters</Label>
+                  <Input
+                    id="extraCreditLetters"
+                    name="extraCreditLetters"
+                    defaultValue={extraCreditLetters.join('')}
+                    placeholder="ACE"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">
+                Leave the number blank to switch extra credit off. It has to be above{' '}
+                {exam.questions.length} so it does not collide with a real question, and at most{' '}
+                {SHEET_ROWS} — the sheet has no row past that. Letters can be typed any way
+                (&ldquo;ACE&rdquo;, &ldquo;a c e&rdquo;, &ldquo;A, C, E&rdquo;); one bubble row records a
+                set, so the order a student fills them in is not recoverable and is not graded.
+              </p>
+              <div>
+                <label className="flex items-start gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    name="extraCreditOnPaper"
+                    defaultChecked={exam.extraCreditOnPaper}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                  />
+                  <span>
+                    Print it on the exam PDF
+                    <span className="mt-0.5 block text-xs text-slate-500">
+                      Adds a short extra-credit section after the last question, telling the student
+                      which letters to bubble. Off means you announce it another way — either way the
+                      bubbles grade the same.
+                    </span>
+                  </span>
+                </label>
+              </div>
+              {exam.extraCreditPosition && extraCreditLetters.length > 0 ? (
+                <Notice tone="blue">
+                  Students bubble{' '}
+                  <span className="font-semibold">{formatExtraCreditLetters(extraCreditLetters)}</span>{' '}
+                  under question {exam.extraCreditPosition}. Set the Gradescope assignment to at least{' '}
+                  {Math.max(exam.questions.length, exam.extraCreditPosition)} questions, or the export
+                  will have no column for that row.
+                  {exam.runs.length > 0
+                    ? ' Runs already generated keep the combination they were generated with.'
+                    : ''}
+                </Notice>
+              ) : null}
+              <Button type="submit" className="w-full">
+                Save extra credit
               </Button>
             </form>
           </Card>

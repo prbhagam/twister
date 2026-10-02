@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { formatBlankLabel } from '@/lib/blank-exams'
 import { canvasPreflight } from '@/lib/export'
 import { prisma } from '@/lib/db'
-import { FLAGGED } from '@/lib/grading'
+import { isFlagged } from '@/lib/grading'
 import { sectionLabel } from '@/lib/roster'
 import { loadScoreRows } from '@/lib/run-data'
 import { byLastName } from '@/lib/roster'
@@ -46,7 +46,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
   const { rows, filename } = await loadScoreRows(runId)
   const graded = rows.filter((r) => r.status === 'graded')
   const flaggedCount = graded.reduce(
-    (n, row) => n + row.questions.filter((q) => FLAGGED.includes(q.verdict) && !q.overridden).length,
+    (n, row) => n + row.questions.filter(isFlagged).length,
     0,
   )
   const sortedRows = rows.slice().sort((a, b) => byLastName(a.student, b.student))
@@ -189,9 +189,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
                     {sortedRows.map((row) => {
                       const studentKey = row.student.gtId ?? row.student.username ?? row.student.email
                       const studentExamId = examIdByStudent.get(studentKey)
-                      const flags = row.questions.filter(
-                        (q) => FLAGGED.includes(q.verdict) && !q.overridden,
-                      ).length
+                      const flags = row.questions.filter(isFlagged).length
                       const blankLabel = studentExamId ? blankLabelByExamId.get(studentExamId) : undefined
                       return (
                         <tr key={studentKey} className="hover:bg-slate-50">

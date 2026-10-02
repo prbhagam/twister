@@ -7,6 +7,7 @@ import { hasBlockingErrors, validateExam } from './exam-validation'
 import { renderMarkdown } from './markdown'
 import type { RenderExam } from './pdf/exam-html'
 import { ExamRenderer, stageRenderAssets } from './pdf/renderer'
+import { readExtraCredit } from './extra-credit'
 import { buildLayout, type SeedQuestion } from './seed'
 
 export interface PracticeExamPdf {
@@ -125,6 +126,9 @@ export async function buildPracticeExamPdf(
   }))
 
   const instructionsHtml = exam.instructions ? await renderMarkdown(exam.instructions) : undefined
+  // Read live, unlike a real run: a practice paper is rendered on demand from the
+  // current authoring content and is never graded, so there is no snapshot to honour.
+  const printedExtraCredit = exam.extraCreditOnPaper ? readExtraCredit(exam) : null
   const courseName = [exam.course.name, exam.course.title].filter(Boolean).join(' — ')
   // One sample ID for the whole batch — these are all "the same" sample student,
   // just sitting a different variant of the paper.
@@ -161,6 +165,7 @@ export async function buildPracticeExamPdf(
         gtId,
         traceCode: layout.traceCode,
         instructionsHtml,
+        extraCredit: printedExtraCredit ?? undefined,
         katexHref: 'katex.min.css',
         questions: layout.entries
           .slice()

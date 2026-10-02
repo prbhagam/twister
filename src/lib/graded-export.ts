@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ZipArchive, type Archiver } from 'archiver'
 import { answeredLayout, answeredTraceCode } from './blank-exams'
+import { readExtraCredit } from './extra-credit'
 import { prisma } from './db'
 import { VERDICT_LABEL, type Verdict } from './grading'
 import { identityValue, parseIdentityField } from './identity'
@@ -145,6 +146,11 @@ async function reportsForRun(runId: string): Promise<{ report: GradedReport; fol
         }
       })
 
+      // Not in `layout` — the bonus is the same row and combination on every
+      // paper — so it is read off the run snapshot and reported separately.
+      const extraCredit = readExtraCredit(run)
+      const extraCreditResult = extraCredit ? byPosition.get(extraCredit.position) : undefined
+
       return {
         folder: folderName(se.student, identifier),
         file: fileName(base.examTitle),
@@ -152,6 +158,16 @@ async function reportsForRun(runId: string): Promise<{ report: GradedReport; fol
           ...base,
           score: { earned: result.earned, possible: result.possible },
           questions,
+          ...(extraCredit && extraCreditResult
+            ? {
+                extraCredit: {
+                  position: extraCredit.position,
+                  letters: extraCredit.letters,
+                  marked: JSON.parse(extraCreditResult.letters) as string[],
+                  awarded: extraCreditResult.awarded,
+                },
+              }
+            : {}),
         } satisfies GradedReport,
       }
     })

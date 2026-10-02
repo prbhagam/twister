@@ -12,6 +12,7 @@ import { identityValue, parseIdentityField, studentsMissingIdentity } from './id
 import { renderMarkdown } from './markdown'
 import type { RenderExam, RenderQuestion } from './pdf/exam-html'
 import { ExamRenderer, buildPrintFile, stageRenderAssets } from './pdf/renderer'
+import { readExtraCredit } from './extra-credit'
 import { byLastName } from './roster'
 import { isStudentExcluded, parseSectionCodes } from './sections'
 import { buildLayout, pickVersionName, type LayoutEntry, type SeedQuestion } from './seed'
@@ -218,6 +219,11 @@ export async function createRun(params: {
       examTitle: exam.title,
       courseName: [exam.course.name, exam.course.title].filter(Boolean).join(' — '),
       instructions: exam.instructions,
+      // Frozen with the rest of the cover content: grading reads the bonus row off
+      // the run, so editing the combination later cannot rescore printed papers.
+      extraCreditPosition: exam.extraCreditPosition,
+      extraCreditLetters: exam.extraCreditLetters,
+      extraCreditOnPaper: exam.extraCreditOnPaper,
       outputDir: '',
       questions: {
         create: exam.questions.map((q) => ({
@@ -315,6 +321,9 @@ export async function executeRun(runId: string): Promise<void> {
 
   const runIdentityField = parseIdentityField(run.identityField)
   const instructionsHtml = run.instructions ? await renderMarkdown(run.instructions) : undefined
+  // Only when the exam asked for it on the paper. The bonus still grades either
+  // way — with this off the instructor announces the row some other way.
+  const printedExtraCredit = run.extraCreditOnPaper ? readExtraCredit(run) : null
   // Renderer startup (especially Chromium) is the most common local failure point.
   // It must be captured below so a run never remains permanently "running".
   let renderer: ExamRenderer | undefined
@@ -363,6 +372,7 @@ export async function executeRun(runId: string): Promise<void> {
           traceCode: item.traceCode,
           versionName: item.versionName ?? undefined,
           instructionsHtml,
+          extraCredit: printedExtraCredit ?? undefined,
           katexHref: 'katex.min.css',
           questions: renderQuestions(layout),
         }
@@ -509,6 +519,7 @@ export async function renderPendingBlanks(runId: string): Promise<void> {
   })
   const renderQuestions = snapshotLookups(run.questions)
   const instructionsHtml = run.instructions ? await renderMarkdown(run.instructions) : undefined
+  const printedExtraCredit = run.extraCreditOnPaper ? readExtraCredit(run) : null
 
   const dir = runDir(runId)
   await mkdir(dir, { recursive: true })
@@ -527,6 +538,7 @@ export async function renderPendingBlanks(runId: string): Promise<void> {
           traceCode: blank.traceCode,
           versionName: blank.versionName ?? undefined,
           instructionsHtml,
+          extraCredit: printedExtraCredit ?? undefined,
           katexHref: 'katex.min.css',
           questions: renderQuestions(JSON.parse(blank.layout) as LayoutEntry[]),
         })

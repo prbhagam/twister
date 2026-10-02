@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/db'
 import { answeredLayout, answeredTraceCode, formatBlankLabel } from '@/lib/blank-exams'
-import { FLAGGED, VERDICT_LABEL, type Verdict } from '@/lib/grading'
+import { VERDICT_LABEL, isFlagged, type Verdict } from '@/lib/grading'
+import { EXTRA_CREDIT_POINTS, formatExtraCreditLetters, readExtraCredit } from '@/lib/extra-credit'
 import { byLastName } from '@/lib/roster'
 import { LETTERS } from '@/lib/seed'
 import { Badge, Card, CardHeader, Markdown, Notice } from '@/components/ui'
@@ -70,6 +71,13 @@ export default async function StudentReviewPage({
   const hasPdf = blank ? Boolean(blank.pdfPath) : Boolean(studentExam.pdfPath)
   const resultByPosition = new Map((result?.questions ?? []).map((q) => [q.position, q]))
   const overrideByPosition = new Map(studentExam.overrides.map((o) => [o.position, o]))
+
+  // Off the run snapshot, not the live exam: this page has to show what this
+  // paper was graded against. It is not in `layout` — the bonus is the same row
+  // and the same combination on every paper — so it gets its own card below.
+  const extraCredit = readExtraCredit(studentExam.run)
+  const extraCreditResult = extraCredit ? resultByPosition.get(extraCredit.position) : undefined
+  const extraCreditOverride = extraCredit ? overrideByPosition.get(extraCredit.position) : undefined
 
   // Previous/next by last name, so you can walk the flagged pile in roster order.
   const siblings = await prisma.studentExam.findMany({
@@ -228,7 +236,7 @@ export default async function StudentReviewPage({
                         <code className="font-mono">{questionResult.rawResponse || '(blank)'}</code> ·
                         key <code className="font-mono">{entry.correctLetters.join('')}</code>
                       </span>
-                      {verdict && (FLAGGED.includes(verdict) || override) ? (
+                      {verdict && (isFlagged({ verdict, overridden: false }) || override) ? (
                         <OverrideControl
                           runId={runId}
                           studentExamId={studentExamId}
@@ -244,6 +252,58 @@ export default async function StudentReviewPage({
               </Card>
             )
           })}
+
+          {extraCredit ? (
+            <Card id={`q${extraCredit.position}`} className="border-amber-200">
+              <CardHeader
+                title={
+                  <span className="flex items-center gap-2">
+                    Extra credit
+                    <span className="text-xs font-normal text-slate-400">
+                      question {extraCredit.position} on the answer sheet
+                    </span>
+                    {extraCreditResult ? (
+                      <Badge tone={VERDICT_TONE[extraCreditResult.verdict as Verdict]}>
+                        {VERDICT_LABEL[extraCreditResult.verdict as Verdict]}
+                      </Badge>
+                    ) : null}
+                    {extraCreditOverride ? <Badge tone="blue">overridden</Badge> : null}
+                  </span>
+                }
+                action={
+                  extraCreditResult ? (
+                    <span className="text-xs tabular-nums text-slate-500">
+                      +{extraCreditResult.awarded}
+                    </span>
+                  ) : null
+                }
+              />
+
+              <div className="space-y-3 px-5 py-4 text-sm">
+                <p className="text-slate-600">
+                  Worth {EXTRA_CREDIT_POINTS} bonus {EXTRA_CREDIT_POINTS === 1 ? 'point' : 'points'} on
+                  top of the exam total, so it raises the score without raising what the exam is out of.
+                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs text-slate-500">
+                  <span>
+                    Scanned as{' '}
+                    <code className="font-mono">{extraCreditResult?.rawResponse || '(blank)'}</code> · key{' '}
+                    <code className="font-mono">{formatExtraCreditLetters(extraCredit.letters)}</code>
+                  </span>
+                  {extraCreditResult ? (
+                    <OverrideControl
+                      runId={runId}
+                      studentExamId={studentExamId}
+                      position={extraCredit.position}
+                      possible={extraCreditResult.possible}
+                      current={extraCreditOverride?.awarded ?? null}
+                      note={extraCreditOverride?.note ?? ''}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </Card>
+          ) : null}
         </div>
       </div>
     </div>

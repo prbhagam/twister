@@ -1,6 +1,7 @@
 import Papa from 'papaparse'
 import { candidateKeys, matchKeys } from './identity'
-import { LETTERS, type LayoutEntry } from './seed'
+import { EXTRA_CREDIT_POINTS, type ExtraCredit } from './extra-credit'
+import { LETTERS, MAX_CHOICES, type LayoutEntry } from './seed'
 
 export type Verdict = 'correct' | 'incorrect' | 'blank' | 'multi' | 'out_of_range'
 
@@ -108,6 +109,50 @@ export interface GradedQuestion {
   /** Set when an Override row replaced the computed score. */
   overridden: boolean
   overrideNote?: string
+  /** Set on the bonus row rather than a question on the paper. Its `possible` is
+   * what the bonus is worth if correct, and is deliberately absent from
+   * `GradeResult.possible`. */
+  extraCredit?: boolean
+}
+
+/**
+ * Whether a graded response needs a human look before scores are published.
+ *
+ * Extra credit never qualifies. It is optional, so a blank or wrong combination is
+ * the ordinary outcome for much of the class, and flagging it would bury the
+ * handful of genuine anomalies under one flag per student.
+ */
+export function isFlagged(
+  question: Pick<GradedQuestion, 'verdict' | 'overridden' | 'extraCredit'>,
+): boolean {
+  if (question.extraCredit) return false
+  return FLAGGED.includes(question.verdict) && !question.overridden
+}
+
+/**
+ * The bonus row as a layout entry, so it grades through the very same `classify`
+ * path as a real question — including the exact-set match that a multi-letter
+ * combination needs, and the `multi` verdict a single-letter one gets from a
+ * second mark.
+ *
+ * `choiceCount` is the full A-E width the sheet offers: there is no printed choice
+ * list to bubble past, so no letter is out of range.
+ *
+ * `points` carries EXTRA_CREDIT_POINTS even though the bonus is excluded from the
+ * exam total. It is what the row is worth *if correct*, which is what an override
+ * recompute reads back off the stored QuestionResult; the total comes from the
+ * layout alone, never from summing these entries.
+ */
+export function extraCreditEntry(extraCredit: ExtraCredit): LayoutEntry {
+  return {
+    position: extraCredit.position,
+    runQuestionId: '',
+    runVariationId: '',
+    choiceOrder: [],
+    correctLetters: extraCredit.letters,
+    choiceCount: MAX_CHOICES,
+    points: EXTRA_CREDIT_POINTS,
+  }
 }
 
 /**
@@ -158,8 +203,14 @@ export function gradeStudent(params: {
   responses: Map<number, string>
   status: string
   overrides?: Map<number, { awarded: number; note?: string | null }>
+  /**
+   * The bonus row this run was generated with, or null when the exam has none.
+   * Its point lands in `earned` and never in `possible`, so a perfect paper plus
+   * the bonus scores 41/40.
+   */
+  extraCredit?: ExtraCredit | null
 }): GradeResult {
-  const { layout, responses, status, overrides } = params
+  const { layout, responses, status, overrides, extraCredit } = params
   const possible = layout.reduce((sum, e) => sum + e.points, 0)
 
   // Gradescope marks students it never received a sheet for as "Missing".
@@ -167,30 +218,38 @@ export function gradeStudent(params: {
     return { status: 'not_taken', earned: 0, possible, questions: [] }
   }
 
+  const grade = (entry: LayoutEntry, isExtraCredit: boolean): GradedQuestion => {
+    const rawResponse = responses.get(entry.position) ?? ''
+    const letters = parseLetters(rawResponse)
+    const verdict = classify(letters, entry)
+    const override = overrides?.get(entry.position)
+
+    return {
+      position: entry.position,
+      rawResponse,
+      letters,
+      verdict,
+      awarded: override ? override.awarded : verdict === 'correct' ? entry.points : 0,
+      possible: entry.points,
+      correctLetters: entry.correctLetters,
+      overridden: Boolean(override),
+      overrideNote: override?.note ?? undefined,
+      ...(isExtraCredit ? { extraCredit: true } : {}),
+    }
+  }
+
   const questions = layout
     .slice()
     .sort((a, b) => a.position - b.position)
-    .map((entry): GradedQuestion => {
-      const rawResponse = responses.get(entry.position) ?? ''
-      const letters = parseLetters(rawResponse)
-      const verdict = classify(letters, entry)
-      const override = overrides?.get(entry.position)
+    .map((entry) => grade(entry, false))
 
-      return {
-        position: entry.position,
-        rawResponse,
-        letters,
-        verdict,
-        awarded: override ? override.awarded : verdict === 'correct' ? entry.points : 0,
-        possible: entry.points,
-        correctLetters: entry.correctLetters,
-        overridden: Boolean(override),
-        overrideNote: override?.note ?? undefined,
-      }
-    })
+  // Appended last, whatever its row number, so the paper's own questions keep
+  // their printed order and the bonus reads as the addendum it is.
+  if (extraCredit) questions.push(grade(extraCreditEntry(extraCredit), true))
 
   return {
     status: 'graded',
+    // Summed over every row including the bonus; `possible` deliberately is not.
     earned: questions.reduce((sum, q) => sum + q.awarded, 0),
     possible,
     questions,
@@ -275,13 +334,38 @@ export function matchStudents(
 export function checkPositionCoverage(
   csvPositions: number[],
   runQuestionCount: number,
+  extraCreditPosition?: number | null,
 ): string | null {
-  if (csvPositions.length !== runQuestionCount) {
-    return `This CSV has ${csvPositions.length} question column(s) but the run has ${runQuestionCount} question(s). Check that you exported the right Gradescope assignment.`
+  // Gradescope emits one column per row its *assignment* is configured for, as a
+  // contiguous 1..M. That shape is what both branches below lean on.
+  const contiguous = csvPositions.every((p, i) => p === i + 1)
+
+  if (!extraCreditPosition) {
+    // No bonus row, so M has to be exactly the exam's question count — the check
+    // that catches having exported a different assignment altogether.
+    if (csvPositions.length !== runQuestionCount) {
+      return `This CSV has ${csvPositions.length} question column(s) but the run has ${runQuestionCount} question(s). Check that you exported the right Gradescope assignment.`
+    }
+    if (!contiguous) {
+      return `Question columns are not a contiguous 1..${runQuestionCount} range: found ${csvPositions.join(', ')}.`
+    }
+    return null
   }
-  const expected = Array.from({ length: runQuestionCount }, (_, i) => i + 1)
-  if (csvPositions.some((p, i) => p !== expected[i])) {
-    return `Question columns are not a contiguous 1..${runQuestionCount} range: found ${csvPositions.join(', ')}.`
+
+  // With a bonus row the assignment has to stretch to reach it, so the export also
+  // carries the unused rows between the last question and the bonus. Those columns
+  // are never read — requiring exact equality here would reject every correctly
+  // configured export instead.
+  const required = Math.max(runQuestionCount, extraCreditPosition)
+  if (!contiguous) {
+    return `Question columns are not a contiguous 1..N range: found ${csvPositions.join(', ')}.`
+  }
+  if (csvPositions.length < required) {
+    return (
+      `This CSV has ${csvPositions.length} question column(s), but this run needs at least ${required}: ` +
+      `${runQuestionCount} question(s) plus the extra-credit row at question ${extraCreditPosition}. ` +
+      `Set the Gradescope assignment to ${required} questions and export again.`
+    )
   }
   return null
 }

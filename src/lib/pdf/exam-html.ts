@@ -1,4 +1,5 @@
 import { EXAM_PRINT_PALETTE, codeThemeCss } from '../print-theme'
+import { EXTRA_CREDIT_POINTS, formatExtraCreditLetters } from '../extra-credit'
 import { LETTERS } from '../seed'
 
 export interface RenderQuestion {
@@ -23,6 +24,12 @@ export interface RenderExam {
    * student to write their own in. */
   blankLabel?: string
   instructionsHtml?: string
+  /**
+   * The bonus row, printed as its own section after the last question. Present
+   * only when the exam has extra credit *and* it is set to appear on the paper —
+   * grading does not read this, so leaving it out changes the paper alone.
+   */
+  extraCredit?: { position: number; letters: string[] }
   questions: RenderQuestion[]
   /** Relative href to katex.min.css, or null when the exam uses no math. */
   katexHref: string | null
@@ -142,6 +149,30 @@ const STYLES = String.raw`
     color: var(--muted);
     white-space: nowrap;
   }
+
+  /* --- extra credit --- */
+  /* Rules top and bottom rather than the single hairline that separates questions:
+     this is not question 41, and a student skimming for the end of the paper
+     should not mistake it for one. */
+  .extra-credit {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin: 0.3in 0 0;
+    padding: 0.16in 0;
+    border-top: 1.5pt solid var(--rule-strong);
+    border-bottom: 1.5pt solid var(--rule-strong);
+  }
+  .extra-credit .qhead { margin-bottom: 0.1in; }
+  .extra-credit .ec-label {
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+  .extra-credit .ec-body { margin: 0; font-size: 11pt; }
+  .extra-credit .ec-letters { font-weight: 700; }
+  .extra-credit .ec-note { margin: 0.09in 0 0; font-size: 9.5pt; color: var(--muted); }
 
   .prompt { margin: 0 0 0.13in; }
   .prompt > :first-child { margin-top: 0; }
@@ -299,6 +330,27 @@ export function buildExamBody(exam: RenderExam): string {
     )
     .join('')
 
+  // Deliberately after `questions` and outside that list: the bonus is not one of
+  // the numbered questions, carries no choices to shuffle, and is identical on
+  // every paper. Its row number is the student's own answer sheet, not this page.
+  const extraCredit = exam.extraCredit
+    ? `
+      <section class="extra-credit">
+        <div class="qhead">
+          <span class="ec-label">Extra credit</span>
+          <span class="qpoints">+${EXTRA_CREDIT_POINTS} ${EXTRA_CREDIT_POINTS === 1 ? 'point' : 'points'}</span>
+        </div>
+        <p class="ec-body">
+          On your answer sheet, find question ${exam.extraCredit.position} and bubble
+          <span class="ec-letters">${escapeHtml(formatExtraCreditLetters(exam.extraCredit.letters))}</span>.
+        </p>
+        <p class="ec-note">
+          There is nothing to work out here &mdash; the bubbles are the whole question.
+          Mark all ${exam.extraCredit.letters.length} and nothing else.
+        </p>
+      </section>`
+    : ''
+
   // The cover carries the student's identity, the exam code, and nothing else the
   // instructor did not write. Anything describing how the randomization works would
   // be publishing the scheme to the room.
@@ -313,5 +365,6 @@ export function buildExamBody(exam: RenderExam): string {
     </div>
     ${exam.instructionsHtml ? `<div class="instructions">${exam.instructionsHtml}</div>` : ''}
   </section>
-  ${questions}`
+  ${questions}
+  ${extraCredit}`
 }
