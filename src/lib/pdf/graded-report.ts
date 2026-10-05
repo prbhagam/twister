@@ -36,6 +36,14 @@ export interface GradedReport {
   /** Absent when the student had no scanned sheet. */
   score?: { earned: number; possible: number }
   questions: ReportQuestion[]
+  /**
+   * The bonus row, when the exam had one. Its own field rather than a
+   * `questions` entry: it is absent from the layout, has no prompt or choice
+   * list, and its point is inside `score.earned` while deliberately outside
+   * `score.possible` — so without showing it, a report reading 41/40 lists only
+   * 40 questions and never says where the extra point came from.
+   */
+  extraCredit?: { position: number; letters: string[]; marked: string[]; awarded: number }
   /** Set instead of questions when nothing was scanned for this student. */
   noSubmission?: boolean
 }
@@ -233,7 +241,31 @@ export function buildReportBody(report: GradedReport): string {
     })
     .join('')
 
-  return `${head}${legend}${questions}`
+  const extraCredit = report.extraCredit
+    ? `
+      <section class="q">
+        <div class="qhead">
+          <span class="qnum">EC</span>
+          <span class="qsrc">question ${report.extraCredit.position} on the answer sheet</span>
+          <span class="tag ${report.extraCredit.awarded > 0 ? 'ok' : 'warn'}">${
+            report.extraCredit.awarded > 0 ? 'Earned' : 'Not earned'
+          }</span>
+          <span class="qpts">+${report.extraCredit.awarded}</span>
+        </div>
+        <div class="prompt">
+          <p>Extra credit: bubble ${escapeHtml(report.extraCredit.letters.join(', '))} under question ${
+            report.extraCredit.position
+          }. Worth a bonus point on top of the exam total, which is why the score above
+          can exceed what the exam is out of.</p>
+        </div>
+        <p class="note">
+          Marked <code>${escapeHtml(report.extraCredit.marked.join(', ') || '(blank)')}</code>
+          &middot; needed <code>${escapeHtml(report.extraCredit.letters.join(', '))}</code>
+        </p>
+      </section>`
+    : ''
+
+  return `${head}${legend}${questions}${extraCredit}`
 }
 
 /** Letters are fixed A–E; exposed so callers build choices in printed order. */

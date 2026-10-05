@@ -90,37 +90,51 @@ model CourseMembership {
 }
 
 model Exam {
-  id                 String    @id @default(cuid())
-  courseId           String
-  title              String
-  instructorSeed     String
-  instructions       String? // markdown, printed on the cover page
+  id                  String    @id @default(cuid())
+  courseId            String
+  title               String
+  instructorSeed      String
+  instructions        String? // markdown, printed on the cover page
   // Reserved for a future Canvas API integration; unused today. See `canvasCourseId`.
-  canvasAssignmentId String?
+  canvasAssignmentId  String?
   // Which student identifier seeds the randomization and gets stamped into the
   // bubble sheet's ID box: "gtId" or "username". This MUST match whatever
   // Gradescope matches its roster on, or no scanned sheet will auto-match.
   // Changing it changes every student's exam, so it is snapshotted per run.
-  identityField      String    @default("gtId")
+  identityField       String    @default("gtId")
   // A practice exam skips the roster entirely: generation renders one paper per
   // variant combination (using a sample identity) instead of one per student, and
   // requires every question to carry the same number of variations so "variant A"
   // means the same thing across the whole exam.
-  isPracticeExam     Boolean   @default(false)
+  isPracticeExam      Boolean   @default(false)
   // Link to the instructor's Google Sheet tracking in-person session signups.
   // Saved as soon as it is pasted, even if the first sync then fails, so a
   // transient fetch error never erases what was entered. See the signup side below.
-  signupSheetUrl     String?
+  signupSheetUrl      String?
   // Decorative names printed on each student's cover ("Version Monica"), as a
   // JSON array of strings. One is picked per student at generation time; they
   // are reused freely and mean nothing to grading. Set from the settings form or
   // a whole-exam questions CSV's version_name column.
-  versionNames       String    @default("[]")
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  lifecycle          String    @default("DRAFT") // DRAFT | READY_FOR_REVIEW | APPROVED | GENERATED | LOCKED | GRADED | ARCHIVED
-  archivedAt         DateTime?
-  archivedById       String?
+  versionNames        String    @default("[]")
+  // One optional bonus point, graded off a bubble-sheet row past the end of the
+  // exam. The student marks a fixed letter combination under `extraCreditPosition`
+  // (say 92) and the point is added to `earned` but never to `possible`, so a
+  // perfect 40-question paper scores 41/40. A null position means this exam has
+  // none; the letters are a JSON array such as ["A","C","E"].
+  //
+  // Snapshotted onto GenerationRun like identityField, because grading reads only
+  // the run side: editing the combination after printing must never regrade papers
+  // already in students' hands against a key nobody read out to them.
+  extraCreditPosition Int?
+  extraCreditLetters  String    @default("[]")
+  // Whether the instruction is printed at the back of the booklet. Off means the
+  // instructor announces it some other way — it changes the paper, never grading.
+  extraCreditOnPaper  Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  lifecycle           String    @default("DRAFT") // DRAFT | READY_FOR_REVIEW | APPROVED | GENERATED | LOCKED | GRADED | ARCHIVED
+  archivedAt          DateTime?
+  archivedById        String?
 
   course        Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
   questions     Question[]
@@ -336,27 +350,33 @@ model SignupRow {
 // ---------------------------------------------------------------------- run side
 
 model GenerationRun {
-  id             String    @id @default(cuid())
-  examId         String
-  label          String?
-  seedUsed       String // snapshot of exam.instructorSeed at run time
-  identityField  String    @default("gtId") // snapshot of exam.identityField
-  sections       String    @default("[]") // JSON array; empty means all sections
-  status         String    @default("pending") // pending | running | completed | failed
-  error          String?
-  studentCount   Int       @default(0)
-  completedCount Int       @default(0)
-  outputDir      String    @default("")
+  id                  String    @id @default(cuid())
+  examId              String
+  label               String?
+  seedUsed            String // snapshot of exam.instructorSeed at run time
+  identityField       String    @default("gtId") // snapshot of exam.identityField
+  sections            String    @default("[]") // JSON array; empty means all sections
+  status              String    @default("pending") // pending | running | completed | failed
+  error               String?
+  studentCount        Int       @default(0)
+  completedCount      Int       @default(0)
+  outputDir           String    @default("")
   // Cover-page content snapshotted so a renamed course/exam never rewrites history.
-  examTitle      String    @default("")
-  courseName     String    @default("")
-  instructions   String?
-  createdAt      DateTime  @default(now())
-  finishedAt     DateTime?
-  createdById    String?
-  inputChecksum  String?
-  configuration  String    @default("{}")
-  lockedAt       DateTime?
+  examTitle           String    @default("")
+  courseName          String    @default("")
+  instructions        String?
+  // Snapshot of the exam's extra credit at run time; see Exam for the semantics.
+  // Grading reads these, not the live exam, so a combination edited after a run
+  // cannot change what an already-printed paper is worth.
+  extraCreditPosition Int?
+  extraCreditLetters  String    @default("[]")
+  extraCreditOnPaper  Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  finishedAt          DateTime?
+  createdById         String?
+  inputChecksum       String?
+  configuration       String    @default("{}")
+  lockedAt            DateTime?
 
   exam         Exam            @relation(fields: [examId], references: [id], onDelete: Cascade)
   questions    RunQuestion[]

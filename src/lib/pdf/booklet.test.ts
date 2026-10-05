@@ -115,12 +115,31 @@ describe('the assembled booklet', () => {
     }
   })
 
-  it('costs exactly one blank plus at most one filler', async () => {
+  it('costs one blank plus one or two fillers, never more', async () => {
+    // Bubble sheet + scantron back = 2, so the assembled count has the body's
+    // parity. An odd body needs one filler to land even; an even body is already
+    // even but ends on content, so it needs two to clear the back cover.
     for (const bodyPages of [20, 21]) {
       const doc = await booklet(bodyPages)
       const overhead = doc.getPageCount() - (bodyPages + 1) // +1 = bubble sheet
-      expect(overhead).toBeGreaterThanOrEqual(1) // the scantron back
-      expect(overhead).toBeLessThanOrEqual(2) // plus parity filler at most
+      expect(overhead).toBe(bodyPages % 2 === 0 ? 3 : 2) // 1 scantron back + fillers
+    }
+  })
+
+  it('shows no questions when the packet is flipped over', async () => {
+    // What a student sees on the back of the stapled packet is page T of a T-page
+    // duplex booklet. It has to be filler, not the last page of questions —
+    // otherwise a packet face-down on the desk is readable before the exam starts.
+    for (const bodyPages of [1, 2, 3, 19, 20, 21, 22, 23]) {
+      const doc = await booklet(bodyPages)
+      const last = doc.getPageCount() - 1
+
+      expect(doc.getPageCount() % 2).toBe(0) // T even, so page T is the outward back
+      // body() leaves its pages bare; only the blank and the fillers get drawn on.
+      expect(doc.getPage(last).node.Contents()).toBeDefined()
+      // ...and that filler is genuinely extra, not the final question page reused:
+      // the last body page sits at index (1 + 1 + bodyPages - 1) and is still bare.
+      expect(doc.getPage(bodyPages + 1).node.Contents()).toBeUndefined()
     }
   })
 })

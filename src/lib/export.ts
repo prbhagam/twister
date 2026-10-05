@@ -77,7 +77,12 @@ export interface ScoreRow {
 
 /** Gradebook export, alphabetical by last name. */
 export function scoresCsv(rows: ScoreRow[]): string {
-  const positions = Math.max(0, ...rows.map((r) => r.questions.length))
+  // Counted over the paper's own questions only. The bonus row's number is past
+  // them (92 on a 40-question exam), so including it here would open 52 empty
+  // columns and still file the bonus under the wrong heading.
+  const positions = Math.max(0, ...rows.map((r) => r.questions.filter((q) => !q.extraCredit).length))
+  const extraCredit = rows.flatMap((r) => r.questions).find((q) => q.extraCredit)
+
   const fields = [
     'Last Name',
     'First Name',
@@ -91,6 +96,9 @@ export function scoresCsv(rows: ScoreRow[]): string {
     'Possible',
     'Percent',
     ...Array.from({ length: positions }, (_, i) => `Q${i + 1}`),
+    // Named by its row so a grade dispute can be traced to the bubbles. Score
+    // already includes the point; Possible deliberately does not.
+    ...(extraCredit ? [`Extra credit (Q${extraCredit.position})`] : []),
   ]
 
   const data = rows
@@ -116,14 +124,15 @@ export function scoresCsv(rows: ScoreRow[]): string {
         missing ? MISSING_MARK : percent.toFixed(1),
       ]
       const byPosition = new Map(row.questions.map((q) => [q.position, q]))
+      // What the student marked, with a * when a manual override changed it.
+      const mark = (q: GradedQuestion | undefined) =>
+        q ? `${q.letters.join('/') || '-'}${q.overridden ? '*' : ''}` : ''
+
       for (let p = 1; p <= positions; p++) {
-        const q = byPosition.get(p)
-        if (missing) {
-          cells.push(MISSING_MARK)
-        } else {
-          // What the student marked, with a * when a manual override changed it.
-          cells.push(q ? `${q.letters.join('/') || '-'}${q.overridden ? '*' : ''}` : '')
-        }
+        cells.push(missing ? MISSING_MARK : mark(byPosition.get(p)))
+      }
+      if (extraCredit) {
+        cells.push(missing ? MISSING_MARK : mark(byPosition.get(extraCredit.position)))
       }
       return cells
     })

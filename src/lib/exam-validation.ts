@@ -1,3 +1,4 @@
+import { validateExtraCredit } from './extra-credit'
 import { MAX_CHOICES } from './seed'
 
 export interface ValidationIssue {
@@ -10,6 +11,9 @@ export interface ValidationIssue {
 export interface ValidatableExam {
   instructorSeed: string
   isPracticeExam?: boolean
+  /** The extra-credit columns as the Exam row holds them; absent means none. */
+  extraCreditPosition?: number | null
+  extraCreditLetters?: string
   questions: {
     id: string
     order: number
@@ -37,6 +41,18 @@ export function validateExam(exam: ValidatableExam): ValidationIssue[] {
 
   if (!exam.instructorSeed.trim()) {
     issues.push({ level: 'error', message: 'The exam has no instructor seed. Set one before generating.' })
+  }
+
+  // Checked ahead of the empty-exam bail-out so a half-configured bonus is
+  // reported while the exam is still a draft, not only once it has questions.
+  for (const message of validateExtraCredit(
+    {
+      position: exam.extraCreditPosition ?? null,
+      letters: exam.extraCreditLetters ? (JSON.parse(exam.extraCreditLetters) as string[]) : [],
+    },
+    exam.questions.length,
+  )) {
+    issues.push({ level: 'error', message })
   }
 
   if (exam.questions.length === 0) {

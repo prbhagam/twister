@@ -1,6 +1,7 @@
 import { answeredLayout, answeredTraceCode } from './blank-exams'
 import { prisma } from './db'
-import type { GradedQuestion, Verdict } from './grading'
+import { extraCreditEntry, type GradedQuestion, type Verdict } from './grading'
+import { readExtraCredit } from './extra-credit'
 import type { ExportStudent, ScoreRow } from './export'
 
 /**
@@ -18,6 +19,11 @@ export async function loadScoreRows(runId: string): Promise<{
     where: { runId, isActive: true },
     orderBy: { createdAt: 'desc' },
   })
+
+  // The bonus row is not in anyone's layout — it is the same for every paper —
+  // so its key comes off the run snapshot to be shown alongside the questions.
+  const run = await prisma.generationRun.findUniqueOrThrow({ where: { id: runId } })
+  const extraCredit = readExtraCredit(run)
 
   const studentExams = await prisma.studentExam.findMany({
     where: { runId },
@@ -59,6 +65,7 @@ export async function loadScoreRows(runId: string): Promise<{
 
     const overrides = new Map(se.overrides.map((o) => [o.position, o]))
     const byPosition = new Map(layout.map((e) => [e.position, e]))
+    if (extraCredit) byPosition.set(extraCredit.position, extraCreditEntry(extraCredit))
 
     const questions: GradedQuestion[] = result.questions
       .slice()
@@ -75,6 +82,7 @@ export async function loadScoreRows(runId: string): Promise<{
           correctLetters: byPosition.get(q.position)?.correctLetters ?? [],
           overridden: Boolean(override),
           overrideNote: override?.note ?? undefined,
+          ...(extraCredit && q.position === extraCredit.position ? { extraCredit: true } : {}),
         }
       })
 

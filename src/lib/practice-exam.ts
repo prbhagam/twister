@@ -7,7 +7,8 @@ import { hasBlockingErrors, validateExam } from './exam-validation'
 import { renderMarkdown } from './markdown'
 import type { RenderExam } from './pdf/exam-html'
 import { ExamRenderer, stageRenderAssets } from './pdf/renderer'
-import { buildLayout, type SeedQuestion } from './seed'
+import { readExtraCredit, type ExtraCredit } from './extra-credit'
+import { buildLayout, type ExamLayout, type SeedQuestion } from './seed'
 
 export interface PracticeExamPdf {
   pdf: Uint8Array
@@ -47,11 +48,51 @@ export function practiceVariantLabels(firstQuestionVariations: { label: string }
  * freezes nothing: there is no roster, no grading, and no answer key to keep in
  * sync, so the practice PDF should always reflect whatever is on the exam right now.
  */
-export async function buildPracticeExamPdf(
+/** One variant's paper: the label it prints under, and the layout behind it. */
+export interface PracticeVariantPaper {
+  label: string
+  layout: ExamLayout
+}
+
+/**
+ * Everything a practice paper and its answer key are both built from.
+ *
+ * Shared deliberately rather than computed twice. A key is only a key because its
+ * letters are the ones on the paper, and that holds only if both come from the same
+ * `buildLayout` call against the same content with the same seed. Deriving the two
+ * from one context makes that structural, instead of two code paths that have to be
+ * kept in step by hand.
+ */
+export interface PracticeContext {
+  examTitle: string
+  courseName: string
+  instructionsHtml?: string
+  /** Printed at the back of the paper, only when the exam asked for it. */
+  printedExtraCredit: ExtraCredit | null
+  /** Configured at all. The key reports it either way, since it grades either way. */
+  extraCredit: ExtraCredit | null
+  extraCreditOnPaper: boolean
+  labels: string[]
+  variantCount: number
+  /** Only the variants this request asked for. */
+  papers: PracticeVariantPaper[]
+  /** variation.id -> rendered prompt. */
+  promptHtml: Map<string, string>
+  /** choice.id -> rendered choice text. */
+  choiceHtml: Map<string, string>
+}
+
+/**
+ * Loads the live exam, validates it, and lays out the requested variants.
+ *
+ * Reads the authoring side and freezes nothing: there is no roster, no grading and
+ * no stored answer key, so a practice paper and its key should always reflect
+ * whatever is on the exam right now.
+ */
+export async function loadPracticeContext(
   examId: string,
-  studentName: string,
   options: { variantLabel?: string } = {},
-): Promise<PracticeExamPdf> {
+): Promise<PracticeContext> {
   const exam = await prisma.exam.findUniqueOrThrow({
     where: { id: examId },
     include: {
@@ -76,7 +117,7 @@ export async function buildPracticeExamPdf(
       `Exam has ${issues.filter((i) => i.level === 'error').length} blocking issue(s):\n` +
         issues
           .filter((i) => i.level === 'error')
-          .map((i) => `  • ${i.message}`)
+          .map((i) => `  \u2022 ${i.message}`)
           .join('\n'),
     )
   }
@@ -97,18 +138,18 @@ export async function buildPracticeExamPdf(
     selectedIndices = labels.map((_, i) => i)
   }
 
-  const renderedPrompts = new Map<string, string>()
-  const renderedChoices = new Map<string, string>()
+  const promptHtml = new Map<string, string>()
+  const choiceHtml = new Map<string, string>()
   await Promise.all([
     ...exam.questions.flatMap((q) =>
       q.variations.map(async (v) => {
-        renderedPrompts.set(v.id, await renderMarkdown(v.promptMarkdown))
+        promptHtml.set(v.id, await renderMarkdown(v.promptMarkdown))
       }),
     ),
     ...exam.questions.flatMap((q) =>
       q.variations.flatMap((v) =>
         v.choices.map(async (c) => {
-          renderedChoices.set(c.id, await renderMarkdown(c.textMarkdown))
+          choiceHtml.set(c.id, await renderMarkdown(c.textMarkdown))
         }),
       ),
     ),
@@ -124,9 +165,51 @@ export async function buildPracticeExamPdf(
     })),
   }))
 
-  const instructionsHtml = exam.instructions ? await renderMarkdown(exam.instructions) : undefined
-  const courseName = [exam.course.name, exam.course.title].filter(Boolean).join(' — ')
-  // One sample ID for the whole batch — these are all "the same" sample student,
+  const papers: PracticeVariantPaper[] = selectedIndices.map((i) => {
+    const label = labels[i]
+    return {
+      label,
+      layout: buildLayout({
+        instructorSeed: exam.instructorSeed,
+        examId: exam.id,
+        // Seeds the choice/question shuffle only \u2014 never printed, never matched
+        // against a real identity. Distinct per variant so regenerating the same
+        // exam always reproduces the same set of practice papers.
+        gtId: `practice:${label}`,
+        questions: seedQuestions,
+        forcedVariantIndex: i,
+      }),
+    }
+  })
+
+  return {
+    examTitle: exam.title,
+    courseName: [exam.course.name, exam.course.title].filter(Boolean).join(' \u2014 '),
+    instructionsHtml: exam.instructions ? await renderMarkdown(exam.instructions) : undefined,
+    printedExtraCredit: exam.extraCreditOnPaper ? readExtraCredit(exam) : null,
+    extraCredit: readExtraCredit(exam),
+    extraCreditOnPaper: exam.extraCreditOnPaper,
+    labels,
+    variantCount,
+    papers,
+    promptHtml,
+    choiceHtml,
+  }
+}
+
+/**
+ * Renders one variant combination of a practice exam \u2014 all of question 1's
+ * variation A with all of question 2's variation A, and so on \u2014 or, with no
+ * `variantLabel`, every variant merged into one document.
+ */
+export async function buildPracticeExamPdf(
+  examId: string,
+  studentName: string,
+  options: { variantLabel?: string } = {},
+): Promise<PracticeExamPdf> {
+  const ctx = await loadPracticeContext(examId, options)
+
+  // One sample ID for the whole batch \u2014 these are all "the same" sample student,
   // just sitting a different variant of the paper.
   const gtId = sampleGtId()
   const name = studentName.trim() || 'Practice Exam'
@@ -138,29 +221,17 @@ export async function buildPracticeExamPdf(
     renderer = await ExamRenderer.launch({ shellPath })
 
     const merged = await PDFDocument.create()
-    for (const i of selectedIndices) {
-      const label = labels[i]
-
-      const layout = buildLayout({
-        instructorSeed: exam.instructorSeed,
-        examId: exam.id,
-        // Seeds the choice/question shuffle only — never printed, never matched
-        // against a real identity. Distinct per variant so regenerating the same
-        // exam always reproduces the same set of practice papers.
-        gtId: `practice:${label}`,
-        questions: seedQuestions,
-        forcedVariantIndex: i,
-      })
-
+    for (const { label, layout } of ctx.papers) {
       const renderExam: RenderExam = {
         // The letter marks the exam itself ("Practice Exam A"), not the sample
         // student, since every variant is nominally sat by the same person.
-        examTitle: `${exam.title} ${label}`,
-        courseName,
+        examTitle: `${ctx.examTitle} ${label}`,
+        courseName: ctx.courseName,
         studentName: name,
         gtId,
         traceCode: layout.traceCode,
-        instructionsHtml,
+        instructionsHtml: ctx.instructionsHtml,
+        extraCredit: ctx.printedExtraCredit ?? undefined,
         katexHref: 'katex.min.css',
         questions: layout.entries
           .slice()
@@ -168,8 +239,8 @@ export async function buildPracticeExamPdf(
           .map((entry) => ({
             position: entry.position,
             points: entry.points,
-            promptHtml: renderedPrompts.get(entry.runVariationId) ?? '',
-            choicesHtml: entry.choiceOrder.map((id) => renderedChoices.get(id) ?? ''),
+            promptHtml: ctx.promptHtml.get(entry.runVariationId) ?? '',
+            choicesHtml: entry.choiceOrder.map((id) => ctx.choiceHtml.get(id) ?? ''),
           })),
       }
 
@@ -179,7 +250,12 @@ export async function buildPracticeExamPdf(
       for (const page of pages) merged.addPage(page)
     }
 
-    return { pdf: await merged.save(), examTitle: exam.title, variantCount, variantLabel: options.variantLabel }
+    return {
+      pdf: await merged.save(),
+      examTitle: ctx.examTitle,
+      variantCount: ctx.variantCount,
+      variantLabel: options.variantLabel,
+    }
   } finally {
     await renderer?.close()
     await rm(workDir, { recursive: true, force: true })
