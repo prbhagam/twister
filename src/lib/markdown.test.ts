@@ -57,6 +57,28 @@ describe('toPlainSummary', () => {
     expect(toPlainSummary('What does `len([1,2,3])` return?')).toBe('What does len([1,2,3]) return?')
   })
 
+  it('keeps inline code literally, whatever characters it holds', () => {
+    expect(toPlainSummary('What does `2 ** 3 ** 2` evaluate to?')).toBe('What does 2 ** 3 ** 2 evaluate to?')
+    expect(toPlainSummary('What is `my_list[-1]`?')).toBe('What is my_list[-1]?')
+    expect(toPlainSummary('Is `a > b and not c`?')).toBe('Is a > b and not c?')
+    expect(toPlainSummary('Does `x # note` run?')).toBe('Does x # note run?')
+  })
+
+  it('strips emphasis, headings, and quotes', () => {
+    expect(toPlainSummary('Which is **not** valid?')).toBe('Which is not valid?')
+    expect(toPlainSummary('Pick the *best* answer, __not__ the _first_ one ~~ever~~.')).toBe(
+      'Pick the best answer, not the first one ever.',
+    )
+    expect(toPlainSummary('## Loops\n> Read carefully.\nWhat prints?')).toBe('Loops Read carefully. What prints?')
+  })
+
+  it('leaves prose that merely contains markdown characters alone', () => {
+    expect(toPlainSummary('Which values satisfy x > 3?')).toBe('Which values satisfy x > 3?')
+    expect(toPlainSummary('What is 2 * 3 * 4?')).toBe('What is 2 * 3 * 4?')
+    expect(toPlainSummary('Is snake_case_name a valid identifier?')).toBe('Is snake_case_name a valid identifier?')
+    expect(toPlainSummary('Is C# compiled?')).toBe('Is C# compiled?')
+  })
+
   it('replaces code blocks with a placeholder', () => {
     expect(toPlainSummary('Trace this:\n```py\nx = 1\n```')).toBe('Trace this: [code]')
   })
