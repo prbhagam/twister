@@ -64,12 +64,24 @@ export async function renderAll(markdowns: string[]): Promise<string[]> {
 
 /** Strips markdown to a short single line, for list views and CSV columns. */
 export function toPlainSummary(markdown: string, max = 90): string {
+  // Inline code is set aside before any syntax is stripped: its contents are
+  // literal, so `2 ** 3 ** 2`, `x_count`, and `a > b` must come through intact.
+  const spans: string[] = []
   const text = markdown
     .replace(/```[\s\S]*?```/g, ' [code] ')
-    .replace(/`([^`]*)`/g, '$1')
+    .replace(/`([^`]*)`/g, (_, code: string) => `\u0000${spans.push(code) - 1}\u0000`)
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' [image] ')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[*_~#>]/g, '')
+    // Markdown syntax only where it is syntax — headings and quotes at the start
+    // of a line, emphasis only as a matched pair hugging its text — so prose like
+    // "x > 3", "2 * 3", "snake_case", or "C#" is left alone.
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, '')
+    .replace(/^[ \t]*>[ \t]?/gm, '')
+    .replace(/(\*\*|~~)(?=\S)(.*?\S)\1/g, '$2')
+    .replace(/(?<!\w)__(?=\S)(.*?\S)__(?!\w)/g, '$1')
+    .replace(/\*(?=[^\s*])([^*]*?[^\s*])\*/g, '$1')
+    .replace(/(?<!\w)_(?=[^\s_])([^_]*?[^\s_])_(?!\w)/g, '$1')
+    .replace(/\u0000(\d+)\u0000/g, (_, i: string) => spans[Number(i)])
     .replace(/\s+/g, ' ')
     .trim()
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
