@@ -339,6 +339,37 @@ which is a different claim.
 Every flagged question can be manually overridden. Overrides are stored against the
 student's exam, not the import, so re-importing a corrected CSV does not wipe them.
 
+## Statistics and item analysis
+
+Once a run is graded, its page shows a **Statistics** card — mean, median, spread,
+reliability, a score histogram, and the most urgent insights — linking to the full
+page at `/runs/<runId>/stats`. Everything is computed on page load from the active
+import, so it always reflects manual overrides. Students with no scanned sheet are
+left out of every number.
+
+- **Scores**: mean, median, SD, range, percentiles, skewness, a histogram, and counts
+  per 90/80/70/60 grade band. Scores are as recorded, bonus included; item analysis
+  and reliability leave the extra-credit row out.
+- **Reliability**: Cronbach's α (KR-20) and the standard error of measurement.
+- **Item analysis**: per question, the share correct, the corrected point-biserial
+  discrimination, and the upper−lower 27% index, then the same per variation with
+  how often each *authored* choice was picked — tallied through each student's own
+  shuffle, since a letter means something different on every paper.
+- **Variation fairness**: a χ² test of whether a question's variations differ in
+  difficulty beyond chance, and how far the random draw moved students' scores.
+- **Position on the paper**: share correct and share blank by position. Question order
+  is shuffled per student, so this isolates fatigue and time pressure from content.
+- **Groups**: by section, and by sign-up session with a test for later sessions
+  scoring higher (the pattern leaked content leaves).
+- **Insights**: plain-English flags, most urgent first — likely miskeys (a wrong
+  choice the top of the class prefers while avoiding the key), near-zero questions,
+  negative discrimination, uneven variations, double-bubbling, implausible
+  distractors, time pressure. Question-level checks are withheld below 20 graded
+  students.
+
+**Item analysis (CSV)** and **Report (PDF)** download from the statistics page. Both
+are aggregate only — no names or identifiers — so they can go to TAs or a coordinator.
+
 ## Getting scores into Canvas
 
 Download **Canvas gradebook (CSV)** from the run page and upload it via Canvas →
