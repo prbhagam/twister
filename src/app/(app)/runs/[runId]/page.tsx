@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db'
 import { isFlagged } from '@/lib/grading'
 import { sectionLabel } from '@/lib/roster'
 import { loadScoreRows } from '@/lib/run-data'
+import { loadRunStats } from '@/lib/stats-data'
 import { byLastName } from '@/lib/roster'
 import { Badge, Button, Card, CardHeader, Empty, Notice } from '@/components/ui'
 import { DangerZone } from '@/components/DangerZone'
@@ -16,6 +17,7 @@ import { CanvasExport } from './CanvasExport'
 import { GradingPanel } from './GradingPanel'
 import { RunProgress } from './RunProgress'
 import { CanvasSync } from './CanvasSync'
+import { StatsSummary } from './StatsSummary'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +52,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
     0,
   )
   const sortedRows = rows.slice().sort((a, b) => byLastName(a.student, b.student))
+  const runStats = graded.length > 0 ? (await loadRunStats(runId)).stats : null
 
   const studentExams = await prisma.studentExam.findMany({
     where: { runId },
@@ -148,6 +151,12 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
             />
             <GradingPanel runId={run.id} />
           </Card>
+
+          {runStats ? (
+            <Card>
+              <StatsSummary runId={run.id} stats={runStats} />
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader
