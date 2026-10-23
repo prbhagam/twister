@@ -20,7 +20,16 @@ export default async function CoursePage({ params }: { params: Promise<{ courseI
   const course = await prisma.course.findUnique({
     where: { id: courseId },
     include: {
-      exams: { where: { archivedAt: null }, orderBy: { updatedAt: 'desc' }, include: { _count: { select: { questions: true, runs: true } } } },
+      exams: {
+        where: { archivedAt: null },
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          // Archived questions stay attached to the exam: a questions CSV import
+          // archives the whole previous bank rather than deleting it. Counting
+          // them would add every earlier import's questions to the total.
+          _count: { select: { questions: { where: { archivedAt: null } }, runs: true } },
+        },
+      },
       // Dropped students stay in the database so their graded exams survive, but
       // they are off the roster: excluded from the table and the section counts.
       students: { where: { droppedAt: null }, orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] },
