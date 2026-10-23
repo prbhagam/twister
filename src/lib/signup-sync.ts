@@ -25,9 +25,11 @@ export interface SignupSyncResult {
  * them, so downstream consumers (the dashboard, the by-session ZIP) never have
  * to special-case "no signup row at all" as long as at least one sync has run.
  *
- * Buckets are upserted rather than replaced: an instructor-edited label or
- * capacity survives a bucket that this sync finds zero students in, the same
- * "flag, don't delete" approach Student.droppedAt uses.
+ * Afterwards nothing is left over from earlier syncs: a student who has since
+ * dropped loses their row, and a session or exception the sheet no longer
+ * mentions is deleted rather than listed with zero students. Buckets the sheet
+ * still has are upserted, so an instructor-edited label or capacity survives
+ * from one sync to the next.
  */
 export async function syncSignupsForExam(examId: string, fetched: SignupSheetFetchResult): Promise<SignupSyncResult> {
   return prisma.$transaction(async (tx) => {
@@ -99,6 +101,20 @@ export async function syncSignupsForExam(examId: string, fetched: SignupSheetFet
         update: { bucketId: notSignedUpBucket.id, rawSignupSlot: '', matchedOn: null },
       })
     }
+
+    // Rows for students no longer on the active roster. Matching and the loop
+    // above only ever touch current students, so a dropped student's row would
+    // otherwise stay — and keep counting toward their old bucket — forever.
+    await tx.signupRow.deleteMany({
+      where: { examId, studentId: { notIn: roster.map((student) => student.id) } },
+    })
+
+    // Buckets left with no one in them are sessions or exceptions the sheet no
+    // longer has. Blank exams record their session by key and name, not by
+    // bucket, so a session folder already exported keeps its blanks.
+    await tx.signupBucket.deleteMany({
+      where: { examId, kind: { not: 'not_signed_up' }, rows: { none: {} } },
+    })
 
     const detail: SignupSyncDetail = { unmatched: matchReport.unmatched, warnings: fetched.warnings }
     await tx.signupImport.updateMany({ where: { examId }, data: { isActive: false } })

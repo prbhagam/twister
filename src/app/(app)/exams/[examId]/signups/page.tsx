@@ -21,7 +21,9 @@ export default async function SignupsPage({ params }: { params: Promise<{ examId
       course: true,
       signupImports: { orderBy: { importedAt: 'desc' }, take: 1 },
       signupBuckets: {
-        include: { rows: { include: { student: true } } },
+        // Dropped students are filtered here as well as removed on sync, so the
+        // counts stay right for anyone who drops between syncs.
+        include: { rows: { where: { student: { droppedAt: null } }, include: { student: true } } },
         orderBy: [{ kind: 'asc' }, { sessionAt: 'asc' }],
       },
     },
@@ -33,8 +35,8 @@ export default async function SignupsPage({ params }: { params: Promise<{ examId
     ? (JSON.parse(lastImport.detail) as { unmatched: { gtId: string; canvasUserId: string; name: string; signupSlot: string }[]; warnings: string[] })
     : null
 
-  const sessions = exam.signupBuckets.filter((b) => b.kind === 'session')
-  const exceptions = exam.signupBuckets.filter((b) => b.kind === 'exception')
+  const sessions = exam.signupBuckets.filter((b) => b.kind === 'session' && b.rows.length > 0)
+  const exceptions = exam.signupBuckets.filter((b) => b.kind === 'exception' && b.rows.length > 0)
   const notSignedUp = exam.signupBuckets.find((b) => b.kind === 'not_signed_up') ?? null
   const notSignedUpStudents = (notSignedUp?.rows ?? []).map((r) => r.student).sort(byLastName)
 

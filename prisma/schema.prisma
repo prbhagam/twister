@@ -286,8 +286,8 @@ model SignupImport {
 // A place a student's signup lands: one in-person session, one distinct
 // exemption sentence, or the single "not signed up" bucket. Upserted by
 // (examId, kind, naturalKey) so re-syncing refreshes a bucket in place instead
-// of duplicating it — and so an instructor's edited label/capacity survives a
-// bucket that briefly has zero students, rather than being deleted and recreated.
+// of duplicating it, keeping an instructor's edited label and capacity. A sync
+// deletes any bucket left with no students: the sheet no longer has it.
 model SignupBucket {
   id         String    @id @default(cuid())
   examId     String
