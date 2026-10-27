@@ -7,8 +7,9 @@ import { isFlagged } from '@/lib/grading'
 import { sectionLabel } from '@/lib/roster'
 import { loadScoreRows } from '@/lib/run-data'
 import { loadRunStats } from '@/lib/stats-data'
+import type { SessionRef } from '@/lib/student-table'
 import { byLastName } from '@/lib/roster'
-import { Badge, Button, Card, CardHeader, Empty, Notice } from '@/components/ui'
+import { Badge, Button, Card, CardHeader, Notice } from '@/components/ui'
 import { DangerZone } from '@/components/DangerZone'
 import { deleteRun } from '../../actions'
 import { retryRun } from './actions'
@@ -18,6 +19,7 @@ import { GradingPanel } from './GradingPanel'
 import { RunProgress } from './RunProgress'
 import { CanvasSync } from './CanvasSync'
 import { StatsSummary } from './StatsSummary'
+import { StudentsTable, type StudentRow } from './StudentsTable'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,10 +49,6 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
 
   const { rows, filename } = await loadScoreRows(runId)
   const graded = rows.filter((r) => r.status === 'graded')
-  const flaggedCount = graded.reduce(
-    (n, row) => n + row.questions.filter(isFlagged).length,
-    0,
-  )
   const sortedRows = rows.slice().sort((a, b) => byLastName(a.student, b.student))
   const runStats = graded.length > 0 ? (await loadRunStats(runId)).stats : null
 
@@ -86,10 +84,44 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
       sessionName: blank.sessionName,
     }))
 
-  const average =
-    graded.length > 0
-      ? graded.reduce((sum, r) => sum + (r.possible > 0 ? r.earned / r.possible : 0), 0) / graded.length
-      : 0
+  // Each student's sign-up bucket, for the session filter. Sign-ups belong to
+  // the exam; a student with no row has never appeared on a synced sheet.
+  const signups = await prisma.signupRow.findMany({ where: { examId: run.examId }, include: { bucket: true } })
+  const bucketByStudentId = new Map(signups.map((row) => [row.studentId, row.bucket]))
+  const sessionByKey = new Map(
+    studentExams.map((se) => {
+      const bucket = bucketByStudentId.get(se.studentId)
+      const session: SessionRef | null = bucket
+        ? {
+            key: bucket.id,
+            label: bucket.kind === 'exception' ? (bucket.label ?? bucket.rawLabel) : bucket.rawLabel,
+            kind: bucket.kind as SessionRef['kind'],
+            at: bucket.sessionAt?.getTime() ?? null,
+          }
+        : null
+      return [se.student.gtId ?? se.student.username ?? se.student.email, session]
+    }),
+  )
+
+  // Plain data for the client-side table; it sorts and filters in the browser.
+  const studentRows: StudentRow[] = sortedRows.map((row) => {
+    const key = row.student.gtId ?? row.student.username ?? row.student.email
+    const studentExamId = examIdByStudent.get(key)
+    return {
+      key,
+      studentExamId,
+      name: `${row.student.lastName}, ${row.student.firstName}`,
+      identifier: row.student.gtId ?? row.student.username,
+      traceCode: row.student.traceCode,
+      status: row.status,
+      earned: row.earned,
+      possible: row.possible,
+      flags: row.questions.filter(isFlagged).length,
+      blankLabel: studentExamId ? blankLabelByExamId.get(studentExamId) : undefined,
+      sections: row.student.sections.map((code) => ({ code, label: sectionLabel(code) })),
+      session: sessionByKey.get(key) ?? null,
+    }
+  })
 
   const sections = (JSON.parse(run.sections) as string[]).map(sectionLabel)
   const canvasIssues = canvasPreflight(rows)
@@ -172,79 +204,7 @@ export default async function RunPage({ params }: { params: Promise<{ runId: str
           </Card>
 
           <Card>
-            <CardHeader
-              title="Students"
-              subtitle={
-                graded.length > 0
-                  ? `Average ${(average * 100).toFixed(1)}% · ${flaggedCount} unresolved flag${flaggedCount === 1 ? '' : 's'}`
-                  : 'Not graded yet'
-              }
-            />
-            {sortedRows.length === 0 ? (
-              <Empty>No students in this run.</Empty>
-            ) : (
-              <div className="max-h-[32rem] overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-slate-50 text-xs text-slate-500">
-                    <tr>
-                      <th className="px-5 py-2 text-left font-medium">Student</th>
-                      <th className="px-3 py-2 text-left font-medium">GT ID</th>
-                      <th className="px-3 py-2 text-left font-medium">Code</th>
-                      <th className="px-3 py-2 text-right font-medium">Score</th>
-                      <th className="px-5 py-2 text-right font-medium">Flags</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {sortedRows.map((row) => {
-                      const studentKey = row.student.gtId ?? row.student.username ?? row.student.email
-                      const studentExamId = examIdByStudent.get(studentKey)
-                      const flags = row.questions.filter(isFlagged).length
-                      const blankLabel = studentExamId ? blankLabelByExamId.get(studentExamId) : undefined
-                      return (
-                        <tr key={studentKey} className="hover:bg-slate-50">
-                          <td className="px-5 py-1.5">
-                            {studentExamId ? (
-                              <Link
-                                href={`/runs/${run.id}/students/${studentExamId}`}
-                                className="hover:underline"
-                              >
-                                {row.student.lastName}, {row.student.firstName}
-                              </Link>
-                            ) : (
-                              `${row.student.lastName}, ${row.student.firstName}`
-                            )}
-                            {blankLabel ? (
-                              <span className="ml-2">
-                                <Badge tone="amber">abnormal · {blankLabel}</Badge>
-                              </span>
-                            ) : null}
-                          </td>
-                          <td className="px-3 py-1.5 font-mono text-xs text-slate-500">
-                            {row.student.gtId ?? row.student.username ?? '—'}
-                          </td>
-                          <td className="px-3 py-1.5 font-mono text-xs text-slate-400">
-                            {row.student.traceCode}
-                          </td>
-                          <td className="px-3 py-1.5 text-right tabular-nums">
-                            {row.status === 'not_taken' ? (
-                              <span className="text-xs text-slate-400">not taken</span>
-                            ) : (
-                              <>
-                                {row.earned}
-                                <span className="text-slate-400">/{row.possible}</span>
-                              </>
-                            )}
-                          </td>
-                          <td className="px-5 py-1.5 text-right">
-                            {flags > 0 ? <Badge tone="amber">{flags}</Badge> : null}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <StudentsTable runId={run.id} rows={studentRows} />
           </Card>
         </div>
 
