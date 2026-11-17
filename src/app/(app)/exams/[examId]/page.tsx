@@ -214,7 +214,15 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
               title="Reference sheet"
               subtitle="Markdown, the same for every student — sample files for file-IO questions, a table of methods. Questions can refer to it by name."
             />
-            <ReferenceSheetEditor examId={exam.id} initial={exam.referenceSheet ?? ''} />
+            <ReferenceSheetEditor
+              // A whole-exam CSV import also sets the sheet, from another form on
+              // this page. The editor copies its starting text into state once, on
+              // mount, so without the key it kept showing the old sheet after an
+              // import — and saving would have written that back over the import.
+              key={exam.referenceSheet ?? ''}
+              examId={exam.id}
+              initial={exam.referenceSheet ?? ''}
+            />
           </Card>
 
           <Card>
