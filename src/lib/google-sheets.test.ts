@@ -88,8 +88,8 @@ describe('parseSignupSheetCsv', () => {
   it('parses the three real shapes from the sample sheet', () => {
     const csv = [
       HEADER,
-      '904246722,Alessandra,Abanador,1930950,Not signed up',
-      '903977463,Lulya,Afeworki,1379106,10/27/2026 1:35 PM (Scheller 101)',
+      '903000007,Tom,Pemberton,1000007,Not signed up',
+      '903000005,Chidi,Egwu,1000005,10/27/2026 1:35 PM (Scheller 101)',
       '900000001,Test,Student,1111111,Exception: all GTE students will be contacted with their exam arrangements as we get closer to exam week.',
     ].join('\n')
     const { rows, errors } = parseSignupSheetCsv(csv)
@@ -101,10 +101,10 @@ describe('parseSignupSheetCsv', () => {
   })
 
   it('is case-insensitive and tolerant of column order', () => {
-    const csv = ['SignupSlot,gtid,canvasuserid,lastname,firstname', 'Not signed up,904246722,1930950,Abanador,Alessandra'].join('\n')
+    const csv = ['SignupSlot,gtid,canvasuserid,lastname,firstname', 'Not signed up,903000007,1000007,Pemberton,Tom'].join('\n')
     const { rows, errors } = parseSignupSheetCsv(csv)
     expect(errors).toEqual([])
-    expect(rows[0].gtId).toBe('904246722')
+    expect(rows[0].gtId).toBe('903000007')
   })
 
   it('reports missing required columns', () => {
@@ -113,7 +113,7 @@ describe('parseSignupSheetCsv', () => {
   })
 
   it('warns, without erroring, on an unparseable session string', () => {
-    const csv = [HEADER, '904246722,A,B,1,Sometime next week'].join('\n')
+    const csv = [HEADER, '903000007,A,B,1,Sometime next week'].join('\n')
     const { errors, warnings } = parseSignupSheetCsv(csv)
     expect(errors).toEqual([])
     expect(warnings[0]).toMatch(/Sometime next week/)
@@ -148,8 +148,8 @@ describe('parseSlotsCsv', () => {
 
 describe('matchSignupRows', () => {
   const roster = [
-    { id: 's1', gtId: '904246722', canvasUserId: '1930950' },
-    { id: 's2', gtId: null, canvasUserId: '1379106' },
+    { id: 's1', gtId: '903000007', canvasUserId: '1000007' },
+    { id: 's2', gtId: null, canvasUserId: '1000005' },
   ]
 
   function row(gtId: string, canvasUserId: string): ParsedSignupRow {
@@ -164,12 +164,12 @@ describe('matchSignupRows', () => {
   }
 
   it('matches on GTID', () => {
-    const report = matchSignupRows([row('904246722', '999')], roster)
-    expect(report.matched).toEqual([{ studentId: 's1', row: row('904246722', '999'), matchedOn: 'gtId' }])
+    const report = matchSignupRows([row('903000007', '999')], roster)
+    expect(report.matched).toEqual([{ studentId: 's1', row: row('903000007', '999'), matchedOn: 'gtId' }])
   })
 
   it('falls back to CanvasUserId when GTID has no match (a student the roster has no GT ID for)', () => {
-    const report = matchSignupRows([row('000000000', '1379106')], roster)
+    const report = matchSignupRows([row('000000000', '1000005')], roster)
     expect(report.matched[0]).toMatchObject({ studentId: 's2', matchedOn: 'canvasUserId' })
   })
 

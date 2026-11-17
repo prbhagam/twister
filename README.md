@@ -202,8 +202,8 @@ a release system since the choice happens at the device.
 each containing a PDF of their graded exam:
 
 ```
-Abebe-Amanuel-904317430/Exam-1-graded.pdf
-Abburu-Ananya-904317044/Exam-1-graded.pdf
+Abbott-Nadia-903000001/Exam-1-graded.pdf
+Duarte-Ines-903000004/Exam-1-graded.pdf
 ```
 
 Each report shows the questions **in the order that student saw them**, with their
@@ -261,11 +261,11 @@ students who never signed up:
 10-27-2026 1-35 PM (Scheller 101)/02-BLANK-01.pdf
 10-27-2026 1-35 PM (Scheller 101)/02-BLANK-02.pdf
 10-27-2026 1-35 PM (Scheller 101)/02-BLANK-03.pdf
-10-27-2026 1-35 PM (Scheller 101)/Afeworki-Lulya-903977463.pdf
+10-27-2026 1-35 PM (Scheller 101)/Egwu-Chidi-903000005.pdf
 OMSCS Seminar/00-COVER-SHEET.pdf
 OMSCS Seminar/01-INSTRUCTIONS.pdf
-OMSCS Seminar/Altshuler-Roman-904205135.pdf
-Not signed up/Abanador-Alessandra-904246722.pdf
+OMSCS Seminar/Marchetti-Wei-903000003.pdf
+Not signed up/Pemberton-Tom-903000007.pdf
 ```
 
 ### The two sheets on top of each session
