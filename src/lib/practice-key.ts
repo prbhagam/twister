@@ -69,6 +69,7 @@ export async function buildPracticeKey(
       examTitle: ctx.examTitle,
       generatedOn: new Date().toISOString().slice(0, 10),
       variants,
+      referenceSheetHtml: ctx.referenceSheetHtml,
       ...(ctx.extraCredit
         ? {
             extraCredit: {

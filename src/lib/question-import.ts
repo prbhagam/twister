@@ -35,12 +35,14 @@ export function writeVariations(questionId: string, question: ImportedQuestion) 
  *
  * `versionNames` replaces the exam's list when the CSV had a version_name
  * column (even an empty one, which clears it) and is left alone when it had
- * none — see QuestionCsvResult.versionNames.
+ * none — see QuestionCsvResult.versionNames. `referenceSheet` follows the same
+ * rule for the reference_sheet column.
  */
 export async function replaceExamQuestions(
   examId: string,
   questions: ImportedQuestion[],
   versionNames: string[] | null,
+  referenceSheet: string | null = null,
 ): Promise<void> {
   await prisma.question.updateMany({
     where: { examId, archivedAt: null },
@@ -59,5 +61,10 @@ export async function replaceExamQuestions(
   }
   if (versionNames !== null) {
     await prisma.exam.update({ where: { id: examId }, data: { versionNames: JSON.stringify(versionNames) } })
+  }
+  // Same rule as the names: an empty column clears the sheet, a missing one
+  // leaves it alone.
+  if (referenceSheet !== null) {
+    await prisma.exam.update({ where: { id: examId }, data: { referenceSheet: referenceSheet.trim() || null } })
   }
 }

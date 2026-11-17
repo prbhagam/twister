@@ -7,6 +7,7 @@ import { readExtraCredit } from './extra-credit'
 import { prisma } from './db'
 import { VERDICT_LABEL, type Verdict } from './grading'
 import { identityValue, parseIdentityField } from './identity'
+import { renderMarkdown } from './markdown'
 import { byLastName } from './roster'
 import { LETTERS } from './seed'
 import type { GradedReport, ReportQuestion } from './pdf/graded-report'
@@ -93,6 +94,8 @@ async function reportsForRun(runId: string): Promise<{ report: GradedReport; fol
 
   const identityField = parseIdentityField(run.identityField)
   const courseName = [run.exam.course.name, run.exam.course.title].filter(Boolean).join(' — ')
+  // Off the run snapshot, so a report shows the sheet that was printed with it.
+  const referenceSheetHtml = run.referenceSheet ? await renderMarkdown(run.referenceSheet) : undefined
 
   return run.studentExams
     .slice()
@@ -158,6 +161,7 @@ async function reportsForRun(runId: string): Promise<{ report: GradedReport; fol
           ...base,
           score: { earned: result.earned, possible: result.possible },
           questions,
+          referenceSheetHtml,
           ...(extraCredit && extraCreditResult
             ? {
                 extraCredit: {

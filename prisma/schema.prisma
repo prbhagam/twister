@@ -95,6 +95,10 @@ model Exam {
   title               String
   instructorSeed      String
   instructions        String? // markdown, printed on the cover page
+  // Markdown printed at the back of every paper, identical for everyone: sample
+  // files a file-IO question reads, a table of string methods. Starts on a fresh
+  // sheet so students can tear it off and work beside it.
+  referenceSheet      String?
   // Reserved for a future Canvas API integration; unused today. See `canvasCourseId`.
   canvasAssignmentId  String?
   // Which student identifier seeds the randomization and gets stamped into the
@@ -365,6 +369,9 @@ model GenerationRun {
   examTitle           String    @default("")
   courseName          String    @default("")
   instructions        String?
+  // Snapshotted like the cover: a question that says "see input.txt on the
+  // reference sheet" must keep pointing at the file that was printed with it.
+  referenceSheet      String?
   // Snapshot of the exam's extra credit at run time; see Exam for the semantics.
   // Grading reads these, not the live exam, so a combination edited after a run
   // cannot change what an already-printed paper is worth.

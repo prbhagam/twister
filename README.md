@@ -107,6 +107,32 @@ loads a demo exam plus a roster, first drop your own export at
    question-by-question comparison of the key against what they marked. Export scores
    alphabetically by last name, or as a Canvas gradebook import CSV.
 
+## Reference sheet
+
+An exam can carry a **reference sheet**: markdown that is the same for every student,
+set in its own card on the exam page with a live preview. Sample text files for
+file-IO questions are the typical use — put each in a code block under its name, and
+have questions refer to it ("Using `grades.txt` from the reference sheet…").
+
+It prints at the back of every paper, **starting on the front of a fresh sheet** so
+students can tear it off and work beside it. If the questions end on the front of a
+sheet, a "This page is intentionally blank" page goes in first, so tearing the
+reference sheet off never takes a question with it. The blank back cover still
+follows. Its footer reads "Reference sheet" with the exam title and its own page
+count, rather than a student's name: it is identical on every paper and meant to
+come loose. It is rendered once per run and reused, so it costs nothing per student.
+
+It can also be set from the whole-exam questions CSV, in an optional last column,
+`reference_sheet`. Cells are read down the column and joined with a blank line, so
+each sample file can sit in a cell of its own, and a row carrying only sheet text is
+fine. A CSV with the column replaces the sheet and an empty column clears it; a CSV
+without the column leaves it alone. Exporting puts the whole sheet in the first
+row's cell.
+
+Like the cover instructions, it is frozen onto each run, so editing it changes only
+runs generated afterwards. It also appears on blank exams, practice papers and their
+answer keys, the question bank PDF, and the graded reports handed back.
+
 ## Printing
 
 Booklets are built for **double-sided** printing:

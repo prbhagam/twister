@@ -1,4 +1,5 @@
 import { codeThemeCss } from '../print-theme'
+import { REFERENCE_SHEET_STYLES, referenceSheetSection } from './reference-sheet'
 
 export interface KeyChoice {
   /** The letter as printed on that variant's paper, A-E. */
@@ -33,6 +34,8 @@ export interface PracticeKey {
    * either way, so a key that omitted it would be an incomplete key.
    */
   extraCredit?: { position: number; letters: string[]; onPaper: boolean }
+  /** The exam's reference sheet, rendered; printed once, after every variant. */
+  referenceSheetHtml?: string
 }
 
 function escapeHtml(value: string): string {
@@ -149,6 +152,7 @@ export const KEY_STYLES = String.raw`
   p { margin: 0.05in 0; }
   ul, ol { margin: 0.05in 0; padding-left: 0.22in; }
   img { max-width: 100%; }
+  ${REFERENCE_SHEET_STYLES}
 `
 
 export function buildKeyShell(katexHref: string | null): string {
@@ -211,6 +215,7 @@ function buildMarkedPaper(variant: KeyVariant): string {
 }
 
 export function buildKeyBody(key: PracticeKey): string {
+  const referenceSheet = key.referenceSheetHtml ? referenceSheetSection(key.referenceSheetHtml, key.examTitle) : ''
   return key.variants
     .map((variant) => {
       const totals = keyTotals(variant)
@@ -259,5 +264,5 @@ export function buildKeyBody(key: PracticeKey): string {
           ${buildMarkedPaper(variant)}
         </section>`
     })
-    .join('')
+    .join('') + referenceSheet
 }

@@ -1,4 +1,5 @@
 import { codeThemeCss } from '../print-theme'
+import { REFERENCE_SHEET_STYLES, referenceSheetSection } from './reference-sheet'
 
 export interface BankChoice {
   /** Authoring position, 1-based — the same number the CSV calls `choice_1`. */
@@ -33,6 +34,8 @@ export interface QuestionBank {
   examTitle: string
   generatedOn: string
   questions: BankQuestion[]
+  /** The exam's reference sheet, rendered; appended so the bank reads complete. */
+  referenceSheetHtml?: string
 }
 
 function escapeHtml(value: string): string {
@@ -131,6 +134,7 @@ export const BANK_STYLES = String.raw`
   p { margin: 0.05in 0; }
   ul, ol { margin: 0.05in 0; padding-left: 0.22in; }
   img { max-width: 100%; }
+  ${REFERENCE_SHEET_STYLES}
 `
 
 export function buildBankShell(katexHref: string | null): string {
@@ -238,5 +242,6 @@ export function buildBankBody(bank: QuestionBank): string {
     })
     .join('')
 
-  return `${head}${note}${questions || '<p class="prompt empty">This exam has no questions yet.</p>'}`
+  const referenceSheet = bank.referenceSheetHtml ? referenceSheetSection(bank.referenceSheetHtml, bank.examTitle) : ''
+  return `${head}${note}${questions || '<p class="prompt empty">This exam has no questions yet.</p>'}${referenceSheet}`
 }

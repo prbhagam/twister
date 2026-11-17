@@ -11,7 +11,16 @@ import {
   drawStudentFields,
   toWinAnsi,
 } from './bubble-sheet'
-import { buildExamBody, buildShellHtml, footerTemplate, headerTemplate, paperOwnerLine, type RenderExam } from './exam-html'
+import {
+  buildExamBody,
+  buildReferenceSheetBody,
+  buildShellHtml,
+  footerTemplate,
+  headerTemplate,
+  paperOwnerLine,
+  referenceSheetFooter,
+  type RenderExam,
+} from './exam-html'
 
 const KATEX_DIST = path.join(process.cwd(), 'node_modules', 'katex', 'dist')
 
@@ -161,6 +170,24 @@ export async function padBooklet(doc: PDFDocument, exam: RenderExam): Promise<vo
 }
 
 /**
+ * Appends the reference sheet so it starts on the front of a fresh sheet of
+ * paper, where a student can tear it off and keep it beside the questions.
+ *
+ * Duplex puts every odd page on a front, so the sheet must start on an odd page.
+ * When the booklet so far has an odd number of pages, its last page is a front
+ * and the next would be that sheet's back — one filler page goes there first, so
+ * tearing the reference sheet off never takes a question with it.
+ *
+ * Runs before `padBooklet`, which still guarantees the blank back cover after it.
+ */
+export async function appendReferenceSheet(doc: PDFDocument, sheet: PDFDocument, exam: RenderExam): Promise<void> {
+  if (doc.getPageCount() % 2 === 1) {
+    drawFillerPage(doc.addPage(SHEET_SIZE), await doc.embedFont(StandardFonts.Helvetica), exam)
+  }
+  for (const page of await doc.copyPages(sheet, sheet.getPageIndices())) doc.addPage(page)
+}
+
+/**
  * Renders exam PDFs: HTML body via headless Chromium, then the untouched
  * bubble-sheet page spliced in front with pdf-lib.
  */
@@ -172,6 +199,14 @@ export class ExamRenderer {
     private readonly idle: Page[],
     private readonly waiting: ((page: Page) => void)[],
   ) {}
+
+  /**
+   * The reference sheet is the same on every paper, so it is rendered once per
+   * run rather than once per student and appended to each booklet. Keyed on the
+   * title as well as the content, since its footer names the exam — practice
+   * papers title each variant differently.
+   */
+  private readonly referenceSheets = new Map<string, Promise<PDFDocument>>()
 
   static async launch(options: { shellPath: string; concurrency?: number }): Promise<ExamRenderer> {
     const concurrency = Math.max(1, options.concurrency ?? Math.min(8, availableParallelism()))
@@ -201,6 +236,37 @@ export class ExamRenderer {
     else this.idle.push(page)
   }
 
+  private referenceSheet(html: string, examTitle: string): Promise<PDFDocument> {
+    const key = `${examTitle}\u0000${html}`
+    let pending = this.referenceSheets.get(key)
+    if (!pending) {
+      pending = (async () => {
+        const page = await this.acquire()
+        try {
+          await page.evaluate((body) => {
+            document.body.innerHTML = body
+          }, buildReferenceSheetBody(html, examTitle))
+          await page.evaluate(() => document.fonts.ready)
+          const pdf = await page.pdf({
+            format: 'Letter',
+            printBackground: true,
+            displayHeaderFooter: true,
+            headerTemplate: headerTemplate(),
+            footerTemplate: referenceSheetFooter(examTitle),
+            margin: { top: '0.7in', bottom: '0.85in', left: '0.75in', right: '0.75in' },
+          })
+          return PDFDocument.load(pdf)
+        } finally {
+          this.release(page)
+        }
+      })()
+      // A failed render is not cached, so the next paper tries again.
+      pending.catch(() => this.referenceSheets.delete(key))
+      this.referenceSheets.set(key, pending)
+    }
+    return pending
+  }
+
   async render(exam: RenderExam): Promise<RenderedExam> {
     const page = await this.acquire()
     let bodyPdf: Buffer
@@ -227,6 +293,9 @@ export class ExamRenderer {
     const doc = await PDFDocument.load(bodyPdf)
     await this.stamper.prependTo(doc, { name: exam.studentName, gtId: exam.gtId, other: exam.blankLabel })
     await addScantronBackPage(doc)
+    if (exam.referenceSheetHtml) {
+      await appendReferenceSheet(doc, await this.referenceSheet(exam.referenceSheetHtml, exam.examTitle), exam)
+    }
     await padBooklet(doc, exam)
 
     return { pdf: await doc.save(), pageCount: doc.getPageCount() }

@@ -33,6 +33,13 @@ export interface QuestionCsvResult {
    * present-but-empty column deliberately clears them.
    */
   versionNames: string[] | null
+  /**
+   * The `reference_sheet` column's non-empty cells, top to bottom, joined with a
+   * blank line. Null when the file has no such column, which leaves the exam's
+   * sheet alone; an empty string when the column is present but blank, which
+   * clears it — the same distinction as `versionNames`.
+   */
+  referenceSheet: string | null
   errors: string[]
   warnings: string[]
 }
@@ -41,17 +48,32 @@ const CHOICE_COLUMNS = Array.from({ length: MAX_CHOICES }, (_, i) => `choice_${i
 
 export const SINGLE_QUESTION_HEADER = ['variation_label', 'prompt', ...CHOICE_COLUMNS, 'correct', 'pin_last']
 /**
- * `version_name` is last so every earlier column keeps its position. It is
- * unrelated to the question on its row: each cell holds one decorative version
- * name for the whole exam, read top to bottom. A row carrying only a
- * version_name (every question column blank) is allowed, for lists longer than
- * the question rows.
+ * `version_name` and `reference_sheet` come last so every earlier column keeps
+ * its position. Neither is related to the question on its row; both describe the
+ * whole exam:
+ *
+ *  - each `version_name` cell holds one decorative version name, read top to
+ *    bottom;
+ *  - the `reference_sheet` cells are markdown, read top to bottom and joined with
+ *    a blank line — so a sheet of sample files can put one file in each cell.
+ *
+ * A row carrying only these (every question column blank) is allowed, for a list
+ * or a sheet longer than the question rows.
  */
-export const WHOLE_EXAM_HEADER = ['question_number', 'points', 'allow_multiple', ...SINGLE_QUESTION_HEADER, 'version_name']
+export const WHOLE_EXAM_HEADER = [
+  'question_number',
+  'points',
+  'allow_multiple',
+  ...SINGLE_QUESTION_HEADER,
+  'version_name',
+  'reference_sheet',
+]
+
+const EXAM_COLUMNS = ['version_name', 'reference_sheet']
 
 /** Every column that describes a question — blank across all of these marks a
- * row that exists only to carry a version name. */
-const QUESTION_COLUMNS = WHOLE_EXAM_HEADER.filter((c) => c !== 'version_name')
+ * row that exists only to carry exam-wide columns. */
+const QUESTION_COLUMNS = WHOLE_EXAM_HEADER.filter((c) => !EXAM_COLUMNS.includes(c))
 
 export const CSV_TEMPLATE = [
   SINGLE_QUESTION_HEADER.join(','),
@@ -107,6 +129,7 @@ export function parseQuestionCsv(
     return {
       questions: [],
       versionNames: null,
+      referenceSheet: null,
       errors: [
         `CSV is missing required column(s): ${missing.join(', ')}. Expected header: ${(wholeExam ? WHOLE_EXAM_HEADER : SINGLE_QUESTION_HEADER).join(',')}`,
       ],
@@ -118,12 +141,19 @@ export function parseQuestionCsv(
   const byQuestion = new Map<string, ImportedQuestion>()
   const hasVersionColumn = fields.includes('version_name')
   const rawVersionNames: string[] = []
+  const hasReferenceColumn = fields.includes('reference_sheet')
+  const referenceParts: string[] = []
 
   parsed.data.forEach((row, i) => {
     const line = i + 2
     const versionName = (row['version_name'] ?? '').trim()
     if (versionName) rawVersionNames.push(versionName)
-    if (versionName && QUESTION_COLUMNS.every((c) => !(row[c] ?? '').trim())) return
+    // Not trimmed inside: markdown indentation is meaningful. Only blank lines
+    // at either end go, so joining cells never doubles the gap between them.
+    const referencePart = (row['reference_sheet'] ?? '').replace(/^\s*\n|\s+$/g, '')
+    if (referencePart.trim()) referenceParts.push(referencePart)
+    const carriesExamColumn = Boolean(versionName || referencePart.trim())
+    if (carriesExamColumn && QUESTION_COLUMNS.every((c) => !(row[c] ?? '').trim())) return
 
     const prompt = (row['prompt'] ?? '').trim()
     const groupKey = wholeExam ? (row['question_number'] ?? '').trim() : '1'
@@ -231,7 +261,9 @@ export function parseQuestionCsv(
     }
   }
 
-  return { questions: [...byQuestion.values()], versionNames, errors, warnings }
+  const referenceSheet = hasReferenceColumn ? referenceParts.join('\n\n') : null
+
+  return { questions: [...byQuestion.values()], versionNames, referenceSheet, errors, warnings }
 }
 
 interface ExportableQuestion {
@@ -249,12 +281,14 @@ interface ExportableQuestion {
  * Round-trips back to the import format, so you can edit in a spreadsheet and
  * re-upload. The whole-exam format also carries the exam's version names, one
  * per row down the `version_name` column, with name-only rows appended if there
- * are more names than question rows.
+ * are more names than question rows, and its reference sheet whole in the first
+ * row's `reference_sheet` cell.
  */
 export function toQuestionCsv(
   questions: ExportableQuestion[],
   includeQuestionNumber: boolean,
   versionNames: readonly string[] = [],
+  referenceSheet: string | null = null,
 ): string {
   const header = includeQuestionNumber ? WHOLE_EXAM_HEADER : SINGLE_QUESTION_HEADER
   const rows = questions.flatMap((q) =>
@@ -280,12 +314,19 @@ export function toQuestionCsv(
   )
 
   if (includeQuestionNumber) {
-    versionNames.forEach((name, i) => {
-      if (i < rows.length) rows[i].push(name)
-      else rows.push([...QUESTION_COLUMNS.map(() => ''), name])
-    })
+    const versionAt = QUESTION_COLUMNS.length
+    const referenceAt = versionAt + 1
+    const ensureRow = (i: number) => {
+      while (rows.length <= i) rows.push([])
+      while (rows[i].length < header.length) rows[i].push('')
+      return rows[i]
+    }
     // Pad so every row has the full width; Papa would otherwise leave them ragged.
-    for (const row of rows) while (row.length < header.length) row.push('')
+    for (let i = 0; i < rows.length; i++) ensureRow(i)
+    versionNames.forEach((name, i) => {
+      ensureRow(i)[versionAt] = name
+    })
+    if (referenceSheet) ensureRow(0)[referenceAt] = referenceSheet
   }
 
   return Papa.unparse({ fields: header, data: rows })
