@@ -1,6 +1,7 @@
 import { EXAM_PRINT_PALETTE, codeThemeCss } from '../print-theme'
 import { EXTRA_CREDIT_POINTS, formatExtraCreditLetters } from '../extra-credit'
 import { LETTERS } from '../seed'
+import { REFERENCE_SHEET_STYLES, REFERENCE_SHEET_TITLE, referenceSheetSection } from './reference-sheet'
 
 export interface RenderQuestion {
   position: number
@@ -30,6 +31,12 @@ export interface RenderExam {
    * grading does not read this, so leaving it out changes the paper alone.
    */
   extraCredit?: { position: number; letters: string[] }
+  /**
+   * The exam's reference sheet, rendered. Not part of `buildExamBody`: it is the
+   * same on every paper, so the renderer prints it once per run and appends it on
+   * a fresh sheet of its own — see `appendReferenceSheet`.
+   */
+  referenceSheetHtml?: string
   questions: RenderQuestion[]
   /** Relative href to katex.min.css, or null when the exam uses no math. */
   katexHref: string | null
@@ -237,6 +244,7 @@ const STYLES = String.raw`
   }
   p { margin: 0.07in 0; }
   ul, ol { margin: 0.07in 0; padding-left: 0.26in; }
+  ${REFERENCE_SHEET_STYLES}
 `
 
 /**
@@ -262,6 +270,24 @@ export function footerTemplate(exam: RenderExam): string {
     <span>${escapeHtml(exam.examTitle)}</span>
     <span>${escapeHtml(exam.traceCode)} &middot; <span class="pageNumber"></span>/<span class="totalPages"></span></span>
   </div>`
+}
+
+/**
+ * The reference sheet's own footer. It names no student: the sheet is identical
+ * on every paper and is meant to be torn off, so a loose one needs tracing to
+ * the exam, not to a person. Its page count is its own for the same reason.
+ */
+export function referenceSheetFooter(examTitle: string): string {
+  return `<div style="width:100%;font:7.5pt 'Helvetica Neue',Helvetica,Arial,sans-serif;color:#5f5f5f;letter-spacing:0.02em;padding:0 0.75in;display:flex;justify-content:space-between;">
+    <span>${REFERENCE_SHEET_TITLE}</span>
+    <span>${escapeHtml(examTitle)}</span>
+    <span><span class="pageNumber"></span>/<span class="totalPages"></span></span>
+  </div>`
+}
+
+/** The reference sheet alone, as the body of its own render. */
+export function buildReferenceSheetBody(html: string, examTitle: string): string {
+  return referenceSheetSection(html, examTitle)
 }
 
 export function headerTemplate(): string {

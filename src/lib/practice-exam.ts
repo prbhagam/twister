@@ -67,6 +67,7 @@ export interface PracticeContext {
   examTitle: string
   courseName: string
   instructionsHtml?: string
+  referenceSheetHtml?: string
   /** Printed at the back of the paper, only when the exam asked for it. */
   printedExtraCredit: ExtraCredit | null
   /** Configured at all. The key reports it either way, since it grades either way. */
@@ -186,6 +187,7 @@ export async function loadPracticeContext(
     examTitle: exam.title,
     courseName: [exam.course.name, exam.course.title].filter(Boolean).join(' \u2014 '),
     instructionsHtml: exam.instructions ? await renderMarkdown(exam.instructions) : undefined,
+    referenceSheetHtml: exam.referenceSheet ? await renderMarkdown(exam.referenceSheet) : undefined,
     printedExtraCredit: exam.extraCreditOnPaper ? readExtraCredit(exam) : null,
     extraCredit: readExtraCredit(exam),
     extraCreditOnPaper: exam.extraCreditOnPaper,
@@ -231,6 +233,7 @@ export async function buildPracticeExamPdf(
         gtId,
         traceCode: layout.traceCode,
         instructionsHtml: ctx.instructionsHtml,
+        referenceSheetHtml: ctx.referenceSheetHtml,
         extraCredit: ctx.printedExtraCredit ?? undefined,
         katexHref: 'katex.min.css',
         questions: layout.entries

@@ -219,6 +219,7 @@ export async function createRun(params: {
       examTitle: exam.title,
       courseName: [exam.course.name, exam.course.title].filter(Boolean).join(' — '),
       instructions: exam.instructions,
+      referenceSheet: exam.referenceSheet,
       // Frozen with the rest of the cover content: grading reads the bonus row off
       // the run, so editing the combination later cannot rescore printed papers.
       extraCreditPosition: exam.extraCreditPosition,
@@ -321,6 +322,7 @@ export async function executeRun(runId: string): Promise<void> {
 
   const runIdentityField = parseIdentityField(run.identityField)
   const instructionsHtml = run.instructions ? await renderMarkdown(run.instructions) : undefined
+  const referenceSheetHtml = run.referenceSheet ? await renderMarkdown(run.referenceSheet) : undefined
   // Only when the exam asked for it on the paper. The bonus still grades either
   // way — with this off the instructor announces the row some other way.
   const printedExtraCredit = run.extraCreditOnPaper ? readExtraCredit(run) : null
@@ -372,6 +374,7 @@ export async function executeRun(runId: string): Promise<void> {
           traceCode: item.traceCode,
           versionName: item.versionName ?? undefined,
           instructionsHtml,
+          referenceSheetHtml,
           extraCredit: printedExtraCredit ?? undefined,
           katexHref: 'katex.min.css',
           questions: renderQuestions(layout),
@@ -519,6 +522,7 @@ export async function renderPendingBlanks(runId: string): Promise<void> {
   })
   const renderQuestions = snapshotLookups(run.questions)
   const instructionsHtml = run.instructions ? await renderMarkdown(run.instructions) : undefined
+  const referenceSheetHtml = run.referenceSheet ? await renderMarkdown(run.referenceSheet) : undefined
   const printedExtraCredit = run.extraCreditOnPaper ? readExtraCredit(run) : null
 
   const dir = runDir(runId)
@@ -538,6 +542,7 @@ export async function renderPendingBlanks(runId: string): Promise<void> {
           traceCode: blank.traceCode,
           versionName: blank.versionName ?? undefined,
           instructionsHtml,
+          referenceSheetHtml,
           extraCredit: printedExtraCredit ?? undefined,
           katexHref: 'katex.min.css',
           questions: renderQuestions(JSON.parse(blank.layout) as LayoutEntry[]),

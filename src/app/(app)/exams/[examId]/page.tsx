@@ -16,6 +16,7 @@ import { addQuestion, approveAllQuestions, moveQuestion, transitionQuestionStatu
 import { CsvImport } from './CsvImport'
 import { GeneratePanel } from './GeneratePanel'
 import { PracticeGeneratePanel } from './PracticeGeneratePanel'
+import { ReferenceSheetEditor } from './ReferenceSheetEditor'
 import { requireExamPermission } from '@/lib/authorization'
 
 export const dynamic = 'force-dynamic'
@@ -203,9 +204,17 @@ export default async function ExamPage({ params }: { params: Promise<{ examId: s
               </div>
               <CsvImport
                 examId={exam.id}
-                hint="Whole-exam CSV (question_number, points, allow_multiple, variation_label, prompt, choice_1…choice_5, correct, pin_last, version_name). correct may list more than one index only when allow_multiple is set on the question's first row. version_name is optional: one cover version name per cell, read down the column, independent of the question on that row — an empty column clears the exam's names, a missing one leaves them alone. This replaces every question in the exam."
+                hint="Whole-exam CSV (question_number, points, allow_multiple, variation_label, prompt, choice_1…choice_5, correct, pin_last, version_name, reference_sheet). correct may list more than one index only when allow_multiple is set on the question's first row. version_name is optional: one cover version name per cell, read down the column, independent of the question on that row — an empty column clears the exam's names, a missing one leaves them alone. reference_sheet is optional too: markdown, read down the column with cells joined by a blank line (one sample file per cell works well), and the same empty-clears, missing-leaves-alone rule. This replaces every question in the exam."
               />
             </div>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Reference sheet"
+              subtitle="Markdown, the same for every student — sample files for file-IO questions, a table of methods. Questions can refer to it by name."
+            />
+            <ReferenceSheetEditor examId={exam.id} initial={exam.referenceSheet ?? ''} />
           </Card>
 
           <Card>

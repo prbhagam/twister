@@ -70,6 +70,7 @@ export async function buildQuestionBank(examId: string): Promise<QuestionBank | 
     examTitle: exam.title,
     generatedOn: new Date().toISOString().slice(0, 10),
     questions,
+    referenceSheetHtml: exam.referenceSheet ? await renderMarkdown(exam.referenceSheet) : undefined,
   }
 }
 

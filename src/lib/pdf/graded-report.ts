@@ -1,5 +1,6 @@
 import { codeThemeCss } from '../print-theme'
 import { LETTERS } from '../seed'
+import { REFERENCE_SHEET_STYLES, referenceSheetSection } from './reference-sheet'
 
 export interface ReportChoice {
   letter: string
@@ -46,6 +47,12 @@ export interface GradedReport {
   extraCredit?: { position: number; letters: string[]; marked: string[]; awarded: number }
   /** Set instead of questions when nothing was scanned for this student. */
   noSubmission?: boolean
+  /**
+   * The run's reference sheet, rendered, so a student reviewing a question that
+   * pointed at it can still read what it pointed at. Left off a report with no
+   * submission, which has no questions to refer to it.
+   */
+  referenceSheetHtml?: string
 }
 
 function escapeHtml(value: string): string {
@@ -144,6 +151,7 @@ export const REPORT_STYLES = String.raw`
   p { margin: 0.05in 0; }
   ul, ol { margin: 0.05in 0; padding-left: 0.22in; }
   img { max-width: 100%; }
+  ${REFERENCE_SHEET_STYLES}
 `
 
 export function buildReportShell(katexHref: string | null): string {
@@ -265,7 +273,10 @@ export function buildReportBody(report: GradedReport): string {
       </section>`
     : ''
 
-  return `${head}${legend}${questions}${extraCredit}`
+  const referenceSheet = report.referenceSheetHtml
+    ? referenceSheetSection(report.referenceSheetHtml, report.examTitle)
+    : ''
+  return `${head}${legend}${questions}${extraCredit}${referenceSheet}`
 }
 
 /** Letters are fixed A–E; exposed so callers build choices in printed order. */

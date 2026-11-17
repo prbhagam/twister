@@ -215,6 +215,11 @@ export async function importQuestionCsv(
         'Version names are only read from a whole-exam CSV uploaded on the exam page; the version_name column here was ignored.',
       )
     }
+    if (result.referenceSheet) {
+      result.warnings.push(
+        'The reference sheet is only read from a whole-exam CSV uploaded on the exam page; the reference_sheet column here was ignored.',
+      )
+    }
     const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
     await audit({ actorUserId: user.id, action: 'question.edited', entityType: 'question', entityId: questionId, courseId: exam.courseId })
 
@@ -226,7 +231,7 @@ export async function importQuestionCsv(
     }
   }
 
-  await replaceExamQuestions(examId, result.questions, result.versionNames)
+  await replaceExamQuestions(examId, result.questions, result.versionNames, result.referenceSheet)
   const exam = await prisma.exam.findUniqueOrThrow({ where: { id: examId } })
   await audit({
     actorUserId: user.id,
@@ -234,7 +239,11 @@ export async function importQuestionCsv(
     entityType: 'exam',
     entityId: examId,
     courseId: exam.courseId,
-    metadata: { questions: result.questions.length, versionNames: result.versionNames?.length ?? null },
+    metadata: {
+      questions: result.questions.length,
+      versionNames: result.versionNames?.length ?? null,
+      referenceSheet: result.referenceSheet === null ? null : result.referenceSheet.length,
+    },
   })
 
   revalidatePath(`/exams/${examId}`)
@@ -245,9 +254,11 @@ export async function importQuestionCsv(
       : result.versionNames.length === 0
         ? ' Version names cleared.'
         : ` Set ${result.versionNames.length} version name${result.versionNames.length === 1 ? '' : 's'}.`
+  const sheet =
+    result.referenceSheet === null ? '' : result.referenceSheet ? ' Set the reference sheet.' : ' Reference sheet cleared.'
   return {
     ok: true,
-    message: `Imported ${result.questions.length} questions with ${variations} variations.${names}`,
+    message: `Imported ${result.questions.length} questions with ${variations} variations.${names}${sheet}`,
     warnings: result.warnings,
   }
 }
@@ -286,4 +297,28 @@ export async function startGeneration(_prev: GenerateState, formData: FormData):
   })
 
   redirect(`/runs/${runId}`)
+}
+
+/**
+ * Saves the exam's reference sheet. Its own form, like extra credit, so saving
+ * the exam settings never reads an absent field back as "cleared".
+ *
+ * Takes effect on runs generated afterwards: each run keeps the sheet it was
+ * printed with, as it keeps its questions.
+ */
+export async function updateReferenceSheet(formData: FormData) {
+  const examId = String(formData.get('examId'))
+  const user = await requireExamPermission(examId, 'question:edit')
+  const referenceSheet = String(formData.get('referenceSheet') ?? '').trim() || null
+
+  const exam = await prisma.exam.update({ where: { id: examId }, data: { referenceSheet } })
+  await audit({
+    actorUserId: user.id,
+    action: 'exam.reference_sheet_updated',
+    entityType: 'exam',
+    entityId: examId,
+    courseId: exam.courseId,
+    metadata: { length: referenceSheet?.length ?? 0 },
+  })
+  revalidatePath(`/exams/${examId}`)
 }

@@ -171,3 +171,75 @@ describe('version_name column', () => {
     expect(out).not.toContain('Version Monica')
   })
 })
+
+describe('reference_sheet column', () => {
+  // question_number,…,pin_last,version_name,reference_sheet
+  const Q1 = '1,1,,A,Pick one,x,y,,,,1,'
+  const Q2 = '2,1,,A,Pick another,x,y,,,,2,'
+  const BLANK_QUESTION = ',,,,,,,,,,,'
+  const question = {
+    order: 1,
+    points: 1,
+    allowMultipleCorrect: false,
+    variations: [
+      {
+        label: 'A',
+        promptMarkdown: 'Using `grades.txt`, how many lines are there?',
+        choices: [
+          { textMarkdown: '3', isCorrect: true, pinToLast: false },
+          { textMarkdown: '4', isCorrect: false, pinToLast: false },
+        ],
+      },
+    ],
+  }
+
+  it('is null when the file has no such column, so an older CSV leaves the sheet alone', () => {
+    const header = WHOLE_EXAM_HEADER.filter((c) => c !== 'reference_sheet').join(',')
+    const result = parseQuestionCsv([header, `${Q1},`].join('\n'))
+    expect(result.errors).toEqual([])
+    expect(result.referenceSheet).toBeNull()
+  })
+
+  it('is empty — not null — when the column is present but blank, which clears the sheet', () => {
+    const result = parseQuestionCsv(csv([`${Q1},,`, `${Q2},,`]))
+    expect(result.referenceSheet).toBe('')
+  })
+
+  it('joins its cells top to bottom with a blank line, so each sample file can have its own cell', () => {
+    const grades = '"### grades.txt\n\n```text\nRoss,88\nRachel,92\n```"'
+    const menu = '"### menu.txt\n\n```text\ncoffee 3.50\n```\n"'
+    const result = parseQuestionCsv(csv([`${Q1},,${grades}`, `${BLANK_QUESTION},,${menu}`, `${Q2},,`]))
+    expect(result.errors).toEqual([])
+    // The sheet-only row carries no question.
+    expect(result.questions).toHaveLength(2)
+    expect(result.referenceSheet).toBe(
+      '### grades.txt\n\n```text\nRoss,88\nRachel,92\n```\n\n### menu.txt\n\n```text\ncoffee 3.50\n```',
+    )
+  })
+
+  it('keeps indentation inside a cell, which markdown code depends on', () => {
+    const code = '"```python\nfor line in f:\n    print(line)\n```"'
+    expect(parseQuestionCsv(csv([`${Q1},,${code}`])).referenceSheet).toBe('```python\nfor line in f:\n    print(line)\n```')
+  })
+
+  it('round-trips through export, commas, quotes, and newlines included', () => {
+    const sheet = '### grades.txt\n\n```text\nRoss,88\n"Rachel",92\n```\n\n| Method | Returns |\n|---|---|\n| `s.split(",")` | a list |'
+    const reparsed = parseQuestionCsv(toQuestionCsv([question], true, ['Version Monica'], sheet))
+    expect(reparsed.errors).toEqual([])
+    expect(reparsed.questions).toHaveLength(1)
+    expect(reparsed.versionNames).toEqual(['Version Monica'])
+    expect(reparsed.referenceSheet).toBe(sheet)
+  })
+
+  it('exports an exam with no sheet as an empty column, which re-imports as no sheet', () => {
+    const out = toQuestionCsv([question], true, [], null)
+    expect(out.split('\n')[0]).toContain('reference_sheet')
+    expect(parseQuestionCsv(out).referenceSheet).toBe('')
+  })
+
+  it('is left out of the per-question export', () => {
+    const out = toQuestionCsv([question], false, [], 'secret sheet')
+    expect(out.split('\n')[0]).not.toContain('reference_sheet')
+    expect(out).not.toContain('secret sheet')
+  })
+})

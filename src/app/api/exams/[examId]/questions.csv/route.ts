@@ -23,7 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ exa
   })
   if (!exam) return new Response('Not found', { status: 404 })
 
-  const csv = toQuestionCsv(exam.questions, true, parseStoredVersionNames(exam.versionNames))
+  const csv = toQuestionCsv(exam.questions, true, parseStoredVersionNames(exam.versionNames), exam.referenceSheet)
   const slug = exam.title.replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '') || 'exam'
 
   return new Response(csv, {
